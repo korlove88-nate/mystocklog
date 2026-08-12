@@ -12,7 +12,9 @@ async function fmp(path: string, apiKey: string) {
 export default async function handler(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase()
-  const apiKey = process.env.FMP_API_KEY
+  // Hosted environment variables take priority. A device-local key can also be
+  // forwarded through this same-origin proxy from the private Settings screen.
+  const apiKey = process.env.FMP_API_KEY || request.headers.get('x-fmp-api-key') || ''
   if (!/^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)) return Response.json({ error: 'Invalid symbol' }, { status: 400 })
   if (!apiKey) return Response.json({ error: 'Market data is not configured' }, { status: 503 })
 

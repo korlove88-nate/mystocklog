@@ -50,4 +50,5 @@ export class CombinedStockDataProvider implements StockDataProvider {
   }
 }
 
-export const stockDataProvider: StockDataProvider = new CombinedStockDataProvider(new ExternalMarketDataProvider())
+export const createStockDataProvider = (apiKey = ''): StockDataProvider =>
+  new CombinedStockDataProvider(new ExternalMarketDataProvider('/api/market-data', apiKey))

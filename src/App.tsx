@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { ChevronDown, ChevronRight, FileSpreadsheet, Home, KeyRound, Menu, NotebookPen, Pencil, RefreshCw, Save, Search, Settings, Trash2, X } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { referenceSnapshot } from './data/referenceSnapshot'
@@ -34,9 +34,11 @@ const getValue=(stock:StockSnapshot,key:SortKey):MetricValue|string|null=>key.st
 const fmt=(value:MetricValue|string|null,kind:Column['kind'])=>{if(value===null||value===undefined||value==='')return '—';if(typeof value==='string')return value;if(kind==='percent')return `${value>0?'+':''}${(value*100).toFixed(2)}%`;if(kind==='cap')return value>=1e12?`$${(value/1e12).toFixed(2)}T`:value>=1e9?`$${(value/1e9).toFixed(1)}B`:`$${(value/1e6).toFixed(0)}M`;if(kind==='money')return `$${value.toLocaleString('en-US',{maximumFractionDigits:2})}`;return value.toLocaleString('en-US',{maximumFractionDigits:2})}
 const tone=(value:MetricValue)=>(value??0)>0?'positive':(value??0)<0?'negative':''
 const loadJson=<T,>(key:string,fallback:T):T=>{try{return JSON.parse(localStorage.getItem(key)??'') as T}catch{return fallback}}
+const subscribeHydration=()=>()=>{}
 const chartPoints=(history:HistoricalPrice[],width=320,height=90)=>{const values=history.map(p=>p.adjustedClose??p.close).filter(Number.isFinite);if(values.length<2)return'';const min=Math.min(...values),max=Math.max(...values),range=max-min||1;return values.map((value,index)=>`${4+index*(width-8)/(values.length-1)},${height-5-(value-min)*(height-12)/range}`).join(' ')}
 
 function App(){
+  const hydrated=useSyncExternalStore(subscribeHydration,()=>true,()=>false)
   const [page,setPage]=useState<Page>('home'),[detailTab,setDetailTab]=useState<DetailTab>('overview')
   const [query,setQuery]=useState(''),[selectedTicker,setSelectedTicker]=useState(referenceSnapshot[0].ticker),[quickTicker,setQuickTicker]=useState<string|null>(null)
   const [sort,setSort]=useState<{key:SortKey;dir:1|-1}>({key:'marketCap',dir:-1}),[mobileNav,setMobileNav]=useState(false)
@@ -63,6 +65,8 @@ function App(){
   const signOut=async()=>{await notesService?.signOut();setAuthUser(null);setSupabaseConnection('idle');setNotes([])}
   const visibleNotes=notes.filter(n=>noteFilter==='전체'||n.ticker===noteFilter||n.tag===noteFilter)
   const validationCounts={ok:validation.filter(v=>v.status==='ok').length,partial:validation.filter(v=>v.status==='partial').length,failed:validation.filter(v=>v.status==='failed').length}
+
+  if(!hydrated)return <div className="app-loading">IM GLOBAL ANT</div>
 
   return <div className="app-shell"><aside className={mobileNav?'sidebar open':'sidebar'}><div className="brand"><div className="brand-mark">A</div><div><strong>IM GLOBAL</strong><span>ANT</span></div><button aria-label="메뉴 닫기" className="mobile-close" onClick={()=>setMobileNav(false)}><X/></button></div><nav>{([['home','홈',Home],['stock','개별종목',FileSpreadsheet],['notes','전략노트',NotebookPen],['settings','설정',Settings]] as const).map(([key,label,Icon])=><button key={key} className={page===key?'active':''} onClick={()=>navigate(key)}><Icon/>{label}</button>)}</nav><div className="sidebar-foot"><span>V1 · 개인 투자 대시보드</span><small>정보 비교용 · 투자 권유 아님</small></div></aside>
     <main><header><button aria-label="메뉴 열기" className="menu-button" onClick={()=>setMobileNav(true)}><Menu/></button><h1>{page==='home'?'관심종목 비교':page==='stock'?'개별종목':page==='notes'?'전략노트':'설정'}</h1><div className={`connection-pill ${dataMode}`}>{loading?'데이터 확인 중':dataMode==='market'?`FMP 연결 · ${marketDate??'최근 종가'}`:'Reference 데이터'}</div></header>

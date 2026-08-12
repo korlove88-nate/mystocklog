@@ -1,4 +1,5 @@
 const FMP_BASE_URL = 'https://financialmodelingprep.com/stable'
+const CACHE_SECONDS = 86_400
 const numberOrNull = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : null
 const first = (value: unknown) => Array.isArray(value) ? value[0] : null
 
@@ -12,11 +13,19 @@ async function fmp(path: string, apiKey: string) {
 export default async function handler(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase()
+  const forceRefresh = request.headers.get('x-refresh-market-data') === '1'
   // Hosted environment variables take priority. A device-local key can also be
   // forwarded through this same-origin proxy from the private Settings screen.
   const apiKey = process.env.FMP_API_KEY || request.headers.get('x-fmp-api-key') || ''
   if (!/^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)) return Response.json({ error: 'Invalid symbol' }, { status: 400 })
   if (!apiKey) return Response.json({ error: 'Market data is not configured' }, { status: 503 })
+
+  const workerCache = typeof caches === 'undefined' ? null : (caches as unknown as { default: Cache }).default
+  const cacheKey = new Request(`${url.origin}/api/market-data-cache/${encodeURIComponent(symbol)}`)
+  if (!forceRefresh && workerCache) {
+    const cached = await workerCache.match(cacheKey)
+    if (cached) return new Response(cached.body, { status: cached.status, headers: { ...Object.fromEntries(cached.headers), 'X-Market-Cache': 'HIT' } })
+  }
 
   const [quoteResult, profileResult, historyResult] = await Promise.allSettled([
     fmp(`/quote?symbol=${encodeURIComponent(symbol)}`, apiKey),
@@ -43,10 +52,12 @@ export default async function handler(request: Request): Promise<Response> {
   const previousClose = numberOrNull(quoteRaw?.previousClose)
   const marketDate = typeof quoteRaw?.timestamp === 'number' ? new Date(quoteRaw.timestamp * 1000).toISOString().slice(0, 10) : historicalPrices.at(-1)?.date ?? null
 
-  return Response.json({
+  const response = Response.json({
     quote: quoteRaw ? { ticker: symbol, price, previousClose, changePercent: numberOrNull(quoteRaw.changesPercentage) !== null ? numberOrNull(quoteRaw.changesPercentage)! / 100 : null, marketDate } : null,
     fundamentals: { ticker: symbol, companyName: profileRaw?.companyName ?? quoteRaw?.name ?? null, sector: profileRaw?.sector ?? null,
       marketCap: numberOrNull(quoteRaw?.marketCap ?? profileRaw?.mktCap), pe: numberOrNull(quoteRaw?.pe), eps: numberOrNull(quoteRaw?.eps) },
     historicalPrices, historyComplete,
-  }, { headers: { 'Cache-Control': 'public, s-maxage=21600, stale-while-revalidate=86400' } })
+  }, { headers: { 'Cache-Control': `public, max-age=0, s-maxage=${CACHE_SECONDS}`, 'X-Market-Cache': forceRefresh ? 'REFRESH' : 'MISS' } })
+  if (workerCache) await workerCache.put(cacheKey, response.clone())
+  return response
 }

@@ -16,14 +16,17 @@ export type MarketDataPayload = {
 
 export class ExternalMarketDataProvider implements MarketDataProvider {
   private readonly cache = new Map<string, Promise<MarketDataPayload>>()
-  constructor(private readonly proxyUrl = '/api/market-data', private readonly apiKey = '') {}
+  constructor(private readonly proxyUrl = '/api/market-data', private readonly apiKey = '', private readonly forceRefresh = false) {}
 
   private load(ticker: string): Promise<MarketDataPayload> {
     const symbol = ticker.trim().toUpperCase()
     const existing = this.cache.get(symbol)
     if (existing) return existing
     const request = fetch(`${this.proxyUrl}?symbol=${encodeURIComponent(symbol)}`, {
-      headers: this.apiKey ? { 'x-fmp-api-key': this.apiKey } : undefined,
+      headers: {
+        ...(this.apiKey ? { 'x-fmp-api-key': this.apiKey } : {}),
+        ...(this.forceRefresh ? { 'x-refresh-market-data': '1' } : {}),
+      },
     })
       .then(async response => {
         if (!response.ok) throw new Error(`Market data request failed: ${response.status}`)

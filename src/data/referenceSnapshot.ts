@@ -1,28 +1,20 @@
 import type { StockSnapshot } from '../types'
 
-// Source: “미국주식 같이 공부하기.xlsx” > “보유 및 관심주”, cached values as of 2026-08-10.
+// Default universe: the 10 largest publicly traded U.S. companies by market cap.
+// Ranking reference: CompaniesMarketCap, checked 2026-08-12. FMP replaces these
+// reference values when connected. Missing fields are deliberately left null.
 // Missing fields are intentionally null. They must never be presented as live market data.
 const raw = [
-  ['QQQ','나스닥100 ETF','지수추종',282379305638,null,null,723.03,0,748.65,-.03422159888,555.6,397.85,.8173432198],
-  ['SPY','S&P500 ETF','지수추종',697945180748,null,null,773.26,0,776.85,-.004621226749,629.28,474.96,.6280528887],
-  ['DIA','다우 ETF','지수추종',44164043713,null,null,539.62,0,546.75,-.01304069502,439.24,363.32,.4858059011],
-  ['AAPL','애플','하드웨어 & 장비',4572794223433,35.92,8.72,313.33,0.09,344.57,-.0906637258,223.78,177.57,.7645435603],
-  ['MSFT','마소','클라우드',3712699000000,27.86,17.95,499.99,0,553.72,-.09703460233,349.2,336.32,.4866496194],
-  ['GOOGL','알파벳','클라우드',4326902772921,17.8,19.9,354.3,0,408.61,-.1329140256,196.6,144.85,1.445978599],
-  ['AMZN','아마존','클라우드',2960626487301,22.08,12.43,274.48,0,287.2,-.04428969359,196,166.72,.646353167],
-  ['TSLA','테슬라','전기차',1029595530524,305.22,1.08,328.58,0,498.83,-.3412986388,297.38,352.26,-.06722307387],
-  ['META','메타플랫폼 (페이스북)','메타버스',1508378240405,22.29,26.56,592.1,0,796.25,-.256389325,520.26,336.35,.7603686636],
-  ['NVDA','앤디비아','반도체',5419832000000,34.3,6.53,223.96,0,236.54,-.05318339393,164.07,29.41,6.615096906],
-  ['SOXX','반도체 ETF',null,1373532806,null,null,543.27,0,655.95,-.1717813858,237.1,180.77,2.005310616],
-  ['AMD','AMD','반도체',789073092086,124.03,3.9,483.36,0,584.73,-.1733620645,149.22,143.9,2.358999305],
-  ['TSM','TSMC','반도체',61719040600000,30.99,13.55,420.04,0,479,-.1230897704,223.7,120.31,2.491314105],
-  ['LCID','루시드','전기차',2774254192,null,-14.04,7.04,0,25.23,-.7209671027,2.37,380.5,-.9814980289],
-  ['RIVN','리비안','전기차',23165770000,null,-2.58,16,0,22.69,-.2948435434,11.58,null,null],
-  ['U','유니티','메타버스',18771000700,null,-1.36,43,.02,52.15,-.1754554171,16.78,142.99,-.6992796699],
-  ['ADBE','어도비','사무 소프트웨어',105420971603,15.18,17.47,265.21,0,370.86,-.2848783908,190.12,567.06,-.5323069869],
-  ['DIS','디즈니','미디어',181146739493,21.64,4.85,104.91,0,119.78,-.1241442645,92.19,154.89,-.322680612],
-  ['NFLX','넷플릭스','미디어',308714434918,23.36,3.17,74.14,0,126.71,-.4148843817,65.08,60.24,.2307436919],
-  ['O','리얼티인컴','리츠/배당',59147085431,45.69,1.37,62.51,0,67.94,-.07992346188,55.86,71.59,-.1268333566],
+  ['NVDA','NVIDIA','반도체',5349000000000,null,null,220.88,1.38,null,null,null,null,null],
+  ['AAPL','Apple','하드웨어 & 장비',4474000000000,null,null,306.62,2.06,null,null,null,null,null],
+  ['GOOG','Alphabet','인터넷 서비스',4328000000000,null,null,353.96,.14,null,null,null,null,null],
+  ['MSFT','Microsoft','소프트웨어 & 클라우드',3789000000000,null,null,510.27,2.06,null,null,null,null,null],
+  ['AMZN','Amazon','이커머스 & 클라우드',2997000000000,null,null,277.88,1.24,null,null,null,null,null],
+  ['AVGO','Broadcom','반도체',2042000000000,null,null,429.35,.37,null,null,null,null,null],
+  ['SPCX','SpaceX','우주항공',1793000000000,null,null,136.15,2.28,null,null,null,null,null],
+  ['META','Meta Platforms','인터넷 서비스',1544000000000,null,null,606.16,2.37,null,null,null,null,null],
+  ['TSLA','Tesla','전기차',1307000000000,null,null,331.05,.75,null,null,null,null,null],
+  ['BRK-B','Berkshire Hathaway','복합금융',1150000000000,null,null,533.22,2.19,null,null,null,null,null],
 ] as const
 
 export const referenceSnapshot: StockSnapshot[] = raw.map(([ticker,company,sector,marketCap,pe,eps,price,changePercent,high52,drawdown52,low52,yearOpen,ytdReturn]) => ({
@@ -30,4 +22,4 @@ export const referenceSnapshot: StockSnapshot[] = raw.map(([ticker,company,secto
   ath: null, atl: null, mdd: { 2024: null, 2025: null, 2026: null }, return1m: null, return3m: null, return6m: null, return1y: null, return3y: null, return5y: null,
   ma20: null, ma60: null, ma120: null, ma200: null, historyComplete: false, priceHistory: [],
 }))
-export const snapshotMeta = { mode: 'reference-snapshot', sourceDate: '2026-08-10', source: 'Excel · 보유 및 관심주' } as const
+export const snapshotMeta = { mode: 'reference-snapshot', sourceDate: '2026-08-12', source: 'CompaniesMarketCap · 미국 기업 시가총액' } as const

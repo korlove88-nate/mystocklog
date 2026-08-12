@@ -46,7 +46,7 @@ const loadJson = <T,>(key:string, fallback:T):T => { try { return JSON.parse(loc
 function App() {
   const [page,setPage] = useState<Page>('home'); const [detailTab,setDetailTab]=useState<DetailTab>('overview')
   const [query,setQuery] = useState(''); const [selectedTicker,setSelectedTicker] = useState(referenceSnapshot[0]?.ticker ?? 'AAPL'); const [quickTicker,setQuickTicker]=useState<string|null>(null)
-  const [sort,setSort] = useState<{key:SortKey;dir:1|-1}>({key:'ticker',dir:1}); const [mobileNav,setMobileNav] = useState(false)
+  const [sort,setSort] = useState<{key:SortKey;dir:1|-1}>({key:'marketCap',dir:-1}); const [mobileNav,setMobileNav] = useState(false)
   const [allStocks,setAllStocks] = useState(referenceSnapshot); const [dataMode,setDataMode] = useState<DataMode>('fallback'); const [marketDate,setMarketDate] = useState<string|null>(null); const [loading,setLoading]=useState(true)
   const [config,setConfig]=useState<ApiConfig>(()=>typeof window==='undefined'?emptyConfig:loadJson<ApiConfig>('im-ant-api-config',emptyConfig)); const [draftConfig,setDraftConfig]=useState<ApiConfig>(()=>typeof window==='undefined'?emptyConfig:loadJson<ApiConfig>('im-ant-api-config',emptyConfig)); const [connection,setConnection]=useState<'idle'|'testing'|'ok'|'error'>('idle')
   const [notes,setNotes]=useState<StrategyNote[]>(()=>typeof window==='undefined'?[]:loadJson<StrategyNote[]>('im-ant-notes',[])); const [noteText,setNoteText]=useState(''); const [noteTag,setNoteTag]=useState('전략'); const [noteFilter,setNoteFilter]=useState('전체')

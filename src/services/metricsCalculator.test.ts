@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { HistoricalPrice } from '../types'
-import { calculateAnnualMdd, calculateDrawdown, calculateMetrics, calculateMovingAverage } from './metricsCalculator'
+import { calculateAnnualMdd, calculateDrawdown, calculateMetrics, calculateMovingAverage, calculateMovingAverageSeries } from './metricsCalculator'
 
 const series = (values: number[], start = '2026-01-02'): HistoricalPrice[] => {
   const startDate = new Date(`${start}T00:00:00Z`)
@@ -37,5 +37,12 @@ describe('metricsCalculator', () => {
     const metrics = calculateMetrics(series([100,110,120]),120,2026,true)
     expect(metrics.return3y).toBeNull()
     expect(metrics.return5y).toBeNull()
+  })
+
+  it('builds chart moving averages without inventing early values', () => {
+    const result = calculateMovingAverageSeries(series(Array.from({length: 20}, (_, index) => index + 1)))
+    expect(result[18].ma20).toBeNull()
+    expect(result[19].ma20).toBe(10.5)
+    expect(result[19].ma60).toBeNull()
   })
 })

@@ -37,6 +37,28 @@ export function calculateMovingAverage(prices: HistoricalPrice[], period: number
   return window.reduce((sum, point) => sum + analyticalPrice(point), 0) / period
 }
 
+export type MovingAveragePoint = { date: string; price: number; ma20: MetricValue; ma60: MetricValue; ma120: MetricValue; ma200: MetricValue }
+
+export function calculateMovingAverageSeries(prices: HistoricalPrice[]): MovingAveragePoint[] {
+  const points = normalizeHistoricalPrices(prices)
+  const periods = [20, 60, 120, 200] as const
+  const sums: Record<number, number> = {20:0,60:0,120:0,200:0}
+  return points.map((point, index) => {
+    const price = analyticalPrice(point)
+    for (const period of periods) {
+      sums[period] += price
+      if (index >= period) sums[period] -= analyticalPrice(points[index - period])
+    }
+    return {
+      date: point.date, price,
+      ma20: index >= 19 ? sums[20] / 20 : null,
+      ma60: index >= 59 ? sums[60] / 60 : null,
+      ma120: index >= 119 ? sums[120] / 120 : null,
+      ma200: index >= 199 ? sums[200] / 200 : null,
+    }
+  })
+}
+
 function subtractUtc(reference: Date, amount: number, unit: 'month' | 'year') {
   const result = new Date(reference)
   if (unit === 'month') result.setUTCMonth(result.getUTCMonth() - amount)

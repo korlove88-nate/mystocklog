@@ -20,6 +20,6 @@ const raw = [
 export const referenceSnapshot: StockSnapshot[] = raw.map(([ticker,company,sector,marketCap,pe,eps,price,changePercent,high52,drawdown52,low52,yearOpen,ytdReturn]) => ({
   ticker, company, sector, marketCap, pe, eps, price, changePercent: changePercent / 100, high52, drawdown52, low52, yearOpen, ytdReturn,
   ath: null, atl: null, mdd: { 2024: null, 2025: null, 2026: null }, return1m: null, return3m: null, return6m: null, return1y: null, return3y: null, return5y: null,
-  ma20: null, ma60: null, ma120: null, ma200: null, historyComplete: false, priceHistory: [],
+  ma20: null, ma60: null, ma120: null, ma200: null, historyComplete: false, priceHistory: [], dataSource: 'reference',
 }))
 export const snapshotMeta = { mode: 'reference-snapshot', sourceDate: '2026-08-12', source: 'CompaniesMarketCap · 미국 기업 시가총액' } as const

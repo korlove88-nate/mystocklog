@@ -41,3 +41,4 @@
 @media(max-width:800px){.overview-snapshot-top .snapshot-price,.overview-snapshot-top .snapshot-chart-detailed{min-height:0}.snapshot-chart-body{height:100px;min-height:100px;max-height:100px}}
 .overview-snapshot-top .snapshot-price,.overview-snapshot-top .snapshot-chart-detailed{min-height:0!important}.overview-snapshot-top .snapshot-chart-detailed{padding:8px 12px!important}.snapshot-chart-head{height:auto!important;min-height:0;flex:0 0 auto}.snapshot-chart-body{height:118px;min-height:118px;max-height:118px;flex:0 0 118px;margin-top:3px}.snapshot-chart-body .recharts-wrapper,.snapshot-chart-body .recharts-surface{height:118px!important;max-height:118px!important}
 @media(max-width:800px){.overview-snapshot-top .snapshot-chart-detailed{padding:8px 10px!important}.snapshot-chart-body{height:118px;min-height:118px;max-height:118px;flex-basis:118px}}
+.snapshot-chart-head b{display:block;height:auto;place-items:initial}

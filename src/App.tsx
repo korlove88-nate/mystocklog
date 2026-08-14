@@ -22,7 +22,7 @@ type ApiConfig = {fmpKey:string;sheetsKey:string;sheetId:string;supabaseUrl:stri
 type Connection = 'idle'|'testing'|'ok'|'error'
 
 const emptyConfig:ApiConfig={fmpKey:'',sheetsKey:'',sheetId:'',supabaseUrl:'',supabaseAnonKey:'',openAiKey:''}
-const APP_VERSION='v1.31'
+const APP_VERSION='v1.32'
 const tags=['가격','실적','이슈','리스크','전략']
 const periods:Period[]=['1M','3M','6M','1Y','3Y','5Y']
 const currentYear=new Date().getUTCFullYear()
@@ -119,14 +119,14 @@ function OverviewPriceChart({data}:{data:{date:string;price:number}[]}){
   const containerRef=useRef<HTMLDivElement>(null)
   const [width,setWidth]=useState(0)
   useEffect(()=>{const element=containerRef.current;if(!element)return;const update=()=>setWidth(Math.max(0,Math.floor(element.clientWidth)));update();const observer=new ResizeObserver(update);observer.observe(element);return()=>observer.disconnect()},[])
-  return <div className="snapshot-chart-body" ref={containerRef}>{width>0&&<LineChart width={width} height={118} data={data} margin={{top:6,right:8,left:0,bottom:4}}><CartesianGrid stroke="#1b3048" vertical={false}/><XAxis dataKey="date" minTickGap={36} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>String(value).slice(5).replace('-','.')}/><YAxis domain={['auto','auto']} width={46} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>`$${Number(value).toFixed(0)}`}/><Tooltip contentStyle={{background:'#0b1522',border:'1px solid #315477',borderRadius:8,fontSize:10}} labelFormatter={value=>String(value)} formatter={value=>[`$${Number(value).toFixed(2)}`,'종가']}/><Line dataKey="price" stroke="#58a6ff" dot={false} activeDot={{r:4,fill:'#f4c45e'}} strokeWidth={2.2}/></LineChart>}</div>
+  return <div className="snapshot-chart-body" ref={containerRef}>{width>0&&<LineChart width={width} height={92} data={data} margin={{top:4,right:8,left:0,bottom:2}}><CartesianGrid stroke="#1b3048" vertical={false}/><XAxis dataKey="date" minTickGap={36} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>String(value).slice(5).replace('-','.')}/><YAxis domain={['auto','auto']} width={43} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>`$${Number(value).toFixed(0)}`}/><Tooltip contentStyle={{background:'#0b1522',border:'1px solid #315477',borderRadius:8,fontSize:10}} labelFormatter={value=>String(value)} formatter={value=>[`$${Number(value).toFixed(2)}`,'종가']}/><Line dataKey="price" stroke="#58a6ff" dot={false} activeDot={{r:3,fill:'#f4c45e'}} strokeWidth={1.35}/></LineChart>}</div>
 }
 function MetricGrid({stock}:{stock:StockSnapshot}){
   const {highDate,lowDate}=stockExtremes(stock)
   const performance=[['YTD',stock.ytdReturn],['3개월',stock.return3m],['1년',stock.return1y],['3년',stock.return3y]] as const
   return <div className="stock-overview">
     <section className="overview-panels">
-      <article className="overview-panel earnings"><h3><i/>실적</h3><div className="overview-grid earnings-grid"><span className="wide">EPS (TTM)<strong>{fmt(stock.eps,'money')}</strong></span><span>ATH (역대 최고가)<strong>{fmt(stock.ath,'money')}</strong></span><span>ATL (역대 최저가)<strong>{fmt(stock.atl,'money')}</strong></span>{mddYears.map(year=><span key={year}>MDD {year}<strong className={tone(stock.mdd[year])}>{fmt(stock.mdd[year],'percent')}</strong></span>)}</div></article>
+      <article className="overview-panel earnings"><h3><i/>실적</h3><div className="overview-grid earnings-grid"><span className="overview-pair">ATH (역대 최고가)<strong>{fmt(stock.ath,'money')}</strong></span><span className="overview-pair">ATL (역대 최저가)<strong>{fmt(stock.atl,'money')}</strong></span>{mddYears.map(year=><span className="overview-third" key={year}>MDD {year}<strong className={tone(stock.mdd[year])}>{fmt(stock.mdd[year],'percent')}</strong></span>)}</div></article>
       <article className="overview-panel levels"><h3><i/>가격 레벨</h3><div className="overview-grid level-grid"><span>52주 고점<strong>{fmt(stock.high52,'money')}</strong><small>{highDate??'—'}</small></span><span>52주 저점<strong>{fmt(stock.low52,'money')}</strong><small>{lowDate??'—'}</small></span><span className="wide">52주 고점 대비<strong className={tone(stock.drawdown52)}>{fmt(stock.drawdown52,'percent')}</strong></span></div></article>
       <article className="overview-panel performance"><h3><i/>성과 요약</h3><div className="overview-grid performance-grid">{performance.map(([label,value])=><span key={label}>{label}<strong className={tone(value)}>{fmt(value,'percent')} {value===null?'':value>0?'▲':'▼'}</strong></span>)}</div></article>
     </section>

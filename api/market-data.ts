@@ -23,9 +23,9 @@ export default async function handler(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase()
   const forceRefresh = request.headers.get('x-refresh-market-data') === '1'
-  // Hosted environment variables take priority. A device-local key can also be
-  // forwarded through this same-origin proxy from the private Settings screen.
-  const apiKey = process.env.FMP_API_KEY || request.headers.get('x-fmp-api-key') || ''
+  // Server-only: every device and scheduled refresh uses one protected key.
+  const apiKey = process.env.FMP_API_KEY || ''
+  if (url.searchParams.get('status') === '1') return Response.json({ configured: Boolean(apiKey) })
   if (!/^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol)) return Response.json({ error: 'Invalid symbol' }, { status: 400 })
   if (!apiKey) return Response.json({ error: 'Market data is not configured' }, { status: 503 })
 

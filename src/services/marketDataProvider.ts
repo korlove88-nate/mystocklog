@@ -18,7 +18,7 @@ export type MarketDataPayload = {
 
 export class ExternalMarketDataProvider implements MarketDataProvider {
   private readonly cache = new Map<string, Promise<MarketDataPayload>>()
-  constructor(private readonly proxyUrl = '/api/market-data', private readonly apiKey = '', private readonly forceRefresh = false) {}
+  constructor(private readonly proxyUrl = '/api/market-data', private readonly forceRefresh = false) {}
 
   private load(ticker: string): Promise<MarketDataPayload> {
     const symbol = ticker.trim().toUpperCase()
@@ -27,7 +27,6 @@ export class ExternalMarketDataProvider implements MarketDataProvider {
     const request = fetch(`${this.proxyUrl}?symbol=${encodeURIComponent(symbol)}`, {
       signal: AbortSignal.timeout(15_000),
       headers: {
-        ...(this.apiKey ? { 'x-fmp-api-key': this.apiKey } : {}),
         ...(this.forceRefresh ? { 'x-refresh-market-data': '1' } : {}),
       },
     })

@@ -5,6 +5,7 @@ export interface MarketDataProvider {
   getHistoricalPrices(ticker: string, startDate?: string, endDate?: string): Promise<HistoricalPrice[]>
   getFundamentals(ticker: string): Promise<StockFundamentals | null>
   isHistoryComplete(ticker: string): Promise<boolean>
+  getUpdatedAt(ticker: string): Promise<string | null>
 }
 
 export type MarketDataPayload = {
@@ -12,6 +13,7 @@ export type MarketDataPayload = {
   fundamentals: StockFundamentals | null
   historicalPrices: HistoricalPrice[]
   historyComplete: boolean
+  updatedAt?: string | null
 }
 
 export class ExternalMarketDataProvider implements MarketDataProvider {
@@ -23,6 +25,7 @@ export class ExternalMarketDataProvider implements MarketDataProvider {
     const existing = this.cache.get(symbol)
     if (existing) return existing
     const request = fetch(`${this.proxyUrl}?symbol=${encodeURIComponent(symbol)}`, {
+      signal: AbortSignal.timeout(15_000),
       headers: {
         ...(this.apiKey ? { 'x-fmp-api-key': this.apiKey } : {}),
         ...(this.forceRefresh ? { 'x-refresh-market-data': '1' } : {}),
@@ -40,6 +43,7 @@ export class ExternalMarketDataProvider implements MarketDataProvider {
   async getQuote(ticker: string) { return (await this.load(ticker)).quote }
   async getFundamentals(ticker: string) { return (await this.load(ticker)).fundamentals }
   async isHistoryComplete(ticker: string) { return (await this.load(ticker)).historyComplete }
+  async getUpdatedAt(ticker: string) { return (await this.load(ticker)).updatedAt ?? null }
   async getHistoricalPrices(ticker: string, startDate?: string, endDate?: string) {
     const prices = (await this.load(ticker)).historicalPrices
     return prices.filter(point => (!startDate || point.date >= startDate) && (!endDate || point.date <= endDate))

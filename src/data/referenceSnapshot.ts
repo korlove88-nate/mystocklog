@@ -1,25 +1,25 @@
 import type { StockSnapshot } from '../types'
 
-// Default universe: the 10 largest publicly traded U.S. companies by market cap.
-// Ranking reference: CompaniesMarketCap, checked 2026-08-12. FMP replaces these
-// reference values when connected. Missing fields are deliberately left null.
-// Missing fields are intentionally null. They must never be presented as live market data.
+// Last-known values recovered from the successful FMP-backed browser session at
+// 2026-08-14 15:42 KST (market close 2026-08-13). This bundled snapshot is only
+// used when no durable server snapshot exists. Fields that were not successfully
+// received in that session remain null and must be rendered as an em dash.
 const raw = [
-  ['NVDA','NVIDIA','반도체',5349000000000,null,null,220.88,1.38,null,null,null,null,null],
-  ['AAPL','Apple','하드웨어 & 장비',4474000000000,null,null,306.62,2.06,null,null,null,null,null],
-  ['GOOG','Alphabet','인터넷 서비스',4328000000000,null,null,353.96,.14,null,null,null,null,null],
-  ['MSFT','Microsoft','소프트웨어 & 클라우드',3789000000000,null,null,510.27,2.06,null,null,null,null,null],
-  ['AMZN','Amazon','이커머스 & 클라우드',2997000000000,null,null,277.88,1.24,null,null,null,null,null],
-  ['AVGO','Broadcom','반도체',2042000000000,null,null,429.35,.37,null,null,null,null,null],
-  ['SPCX','SpaceX','우주항공',1793000000000,null,null,136.15,2.28,null,null,null,null,null],
-  ['META','Meta Platforms','인터넷 서비스',1544000000000,null,null,606.16,2.37,null,null,null,null,null],
-  ['TSLA','Tesla','전기차',1307000000000,null,null,331.05,.75,null,null,null,null,null],
-  ['BRK-B','Berkshire Hathaway','복합금융',1150000000000,null,null,533.22,2.19,null,null,null,null,null],
+  ['NVDA','NVIDIA Corporation','Technology',5460000000000,null,null,225.30,.54,236.54,-4.75,164.07,188.85,19.30,[-27.05,-36.89,-19.40]],
+  ['AAPL','Apple Inc.','Technology',4480000000000,null,null,305.26,1.00,344.57,-11.41,223.78,271.01,12.64,[-15.46,-30.22,-12.71]],
+  ['MSFT','Microsoft Corporation','Technology',3690000000000,null,null,496.88,.90,553.72,-10.27,349.20,472.94,5.06,[-15.49,-20.72,-27.02]],
+  ['AMZN','Amazon.com, Inc.','Consumer Cyclical',2850000000000,null,null,265.13,-.80,287.20,-7.68,196.00,226.50,17.06,[-19.49,-30.88,-19.64]],
+  ['META','Meta Platforms, Inc.','Communication Services',1520000000000,null,null,594.97,2.78,796.25,-25.28,520.26,650.41,-8.52,[-18.43,-34.21,-28.79]],
+  ['TSLA','Tesla, Inc.','Consumer Cyclical',1340000000000,null,null,339.96,3.80,498.83,-31.85,297.38,438.07,-22.40,[-42.82,-48.19,-33.95]],
+  ['GOOG','Alphabet Inc.','Communication Services',null,null,null,null,null,null,null,null,null,null,null],
+  ['AVGO','Broadcom Inc.','Technology',null,null,null,null,null,null,null,null,null,null,null],
+  ['SPCX','Space Exploration Technologies Corp.','Industrials',null,null,null,null,null,null,null,null,null,null,null],
+  ['BRK-B','Berkshire Hathaway Inc.','Financial Services',null,null,null,null,null,null,null,null,null,null,null],
 ] as const
 
-export const referenceSnapshot: StockSnapshot[] = raw.map(([ticker,company,sector,marketCap,pe,eps,price,changePercent,high52,drawdown52,low52,yearOpen,ytdReturn]) => ({
-  ticker, company, sector, marketCap, pe, eps, price, changePercent: changePercent / 100, high52, drawdown52, low52, yearOpen, ytdReturn,
-  ath: null, atl: null, mdd: { 2024: null, 2025: null, 2026: null }, return1m: null, return3m: null, return6m: null, return1y: null, return3y: null, return5y: null,
+export const referenceSnapshot: StockSnapshot[] = raw.map(([ticker,company,sector,marketCap,pe,eps,price,changePercent,high52,drawdown52,low52,yearOpen,ytdReturn,mdd]) => ({
+  ticker, company, sector, marketCap, pe, eps, price, changePercent: changePercent === null ? null : changePercent / 100, high52, drawdown52: drawdown52 === null ? null : drawdown52 / 100, low52, yearOpen, ytdReturn: ytdReturn === null ? null : ytdReturn / 100,
+  ath: null, atl: null, mdd: { 2024: mdd ? mdd[0] / 100 : null, 2025: mdd ? mdd[1] / 100 : null, 2026: mdd ? mdd[2] / 100 : null }, return1m: null, return3m: null, return6m: null, return1y: null, return3y: null, return5y: null,
   ma20: null, ma60: null, ma120: null, ma200: null, historyComplete: false, priceHistory: [], dataSource: 'reference',
 }))
-export const snapshotMeta = { mode: 'reference-snapshot', sourceDate: '2026-08-12', source: 'CompaniesMarketCap · 미국 기업 시가총액' } as const
+export const snapshotMeta = { mode: 'recovered-snapshot', sourceDate: '2026-08-14T06:42:00.000Z', source: 'FMP 마지막 성공값 · 종가 2026-08-13' } as const

@@ -21,7 +21,7 @@ type ApiConfig = {fmpKey:string;sheetsKey:string;sheetId:string;supabaseUrl:stri
 type Connection = 'idle'|'testing'|'ok'|'error'
 
 const emptyConfig:ApiConfig={fmpKey:'',sheetsKey:'',sheetId:'',supabaseUrl:'',supabaseAnonKey:'',openAiKey:''}
-const APP_VERSION='v1.15'
+const APP_VERSION='v1.16'
 const tags=['가격','실적','이슈','리스크','전략']
 const periods:Period[]=['1M','3M','6M','1Y','3Y','5Y']
 const currentYear=new Date().getUTCFullYear()
@@ -75,7 +75,7 @@ function App(){
   if(!hydrated)return <div className="app-loading">MyStockLog</div>
 
   return <div className="app-shell"><aside className={mobileNav?'sidebar open':'sidebar'}><div className="brand"><div className="brand-mark"><b>M</b><i/><i/><i/></div><div><strong>MyStockLog</strong><span>MARKET JOURNAL</span></div><button aria-label="메뉴 닫기" className="mobile-close" onClick={()=>setMobileNav(false)}><X/></button></div><nav>{([['home','홈',Home],['stock','개별종목',FileSpreadsheet],['notes','전략노트',NotebookPen],['settings','설정',Settings]] as const).map(([key,label,Icon])=><button key={key} className={page===key?'active':''} onClick={()=>navigate(key)}><Icon/>{label}</button>)}</nav><div className="sidebar-foot"><span>MyStockLog · {APP_VERSION}</span><small>정보 비교용 · 투자 권유 아님</small></div></aside>
-    <main><header><button aria-label="메뉴 열기" className="menu-button" onClick={()=>setMobileNav(true)}><Menu/></button><h1>{page==='home'?'관심종목 비교':page==='stock'?'개별종목':page==='notes'?'전략노트':'설정'}</h1><span className="app-version">{APP_VERSION}</span><div className={`connection-pill ${dataMode}`}>{loading?'데이터 확인 중':dataMode==='market'?`FMP 연결 · 갱신 ${formatUpdatedAt(updatedAt)} KST · 종가 ${marketDate??'—'}`:'Reference 데이터'}</div></header>
+    <main><header><button aria-label="메뉴 열기" className="menu-button" onClick={()=>setMobileNav(true)}><Menu/></button><h1>{page==='home'?'관심종목 비교':page==='stock'?'개별종목':page==='notes'?'전략노트':'설정'}</h1><span className="app-version">{APP_VERSION}</span><div className={`connection-pill ${dataMode}`}>{loading?'데이터 확인 중':dataMode==='market'?`FMP 연결 · 갱신 ${formatUpdatedAt(updatedAt)} KST · 종가 ${marketDate??'—'}`:'저장된 마지막 값 · 2026. 08. 14. 15:42 KST'}</div></header>
       {page==='home'&&<HomePage stocks={stocks} allCount={allStocks.length} query={query} setQuery={setQuery} sort={sort} sortBy={key=>setSort(p=>({key,dir:p.key===key?p.dir===1?-1:1:1}))} onQuick={setQuickTicker} validation={validationCounts} refresh={refreshMarket} loading={loading}/>} 
       {page==='stock'&&selected&&<StockPage stock={selected} stocks={allStocks} detailTab={detailTab} setDetailTab={setDetailTab} selectTicker={setSelectedTicker} noteText={noteText} setNoteText={setNoteText} noteTag={noteTag} setNoteTag={setNoteTag} addNote={addNote} noteMessage={noteMessage}/>} 
       {page==='notes'&&<NotesPage notes={visibleNotes} allNotes={notes} filter={noteFilter} setFilter={setNoteFilter} remove={removeNote} update={updateNote} connected={supabaseConnection==='ok'}/>} 

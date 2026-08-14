@@ -23,11 +23,24 @@ export type StockFundamentals = {
   pe?: MetricValue
   eps?: MetricValue
 }
+export type MarketFieldSource = 'googlefinance' | 'fmp' | 'stored' | 'reference'
+export type StockDataSources = {
+  price: MarketFieldSource
+  history: MarketFieldSource
+  high52: MarketFieldSource
+  low52: MarketFieldSource
+  marketCap: MarketFieldSource
+  pe: MarketFieldSource
+  eps: MarketFieldSource
+  sector: MarketFieldSource
+  company: MarketFieldSource
+}
 export interface StockSnapshot {
   ticker: string; company: string; sector: string | null; marketCap: MetricValue; pe: MetricValue; eps: MetricValue;
   price: MetricValue; changePercent: MetricValue; ath: MetricValue; high52: MetricValue; drawdown52: MetricValue;
   low52: MetricValue; atl: MetricValue; mdd: Record<number, MetricValue>; yearOpen: MetricValue; ytdReturn: MetricValue;
   return1m: MetricValue; return3m: MetricValue; return6m: MetricValue; return1y: MetricValue; return3y: MetricValue; return5y: MetricValue;
   ma20: MetricValue; ma60: MetricValue; ma120: MetricValue; ma200: MetricValue;
-  historyComplete: boolean; priceHistory: HistoricalPrice[]; dataSource?: 'fmp' | 'reference';
+  historyComplete: boolean; priceHistory: HistoricalPrice[]; dataSource?: 'googlefinance' | 'hybrid' | 'fmp' | 'stored' | 'reference';
+  sources?: StockDataSources;
 }

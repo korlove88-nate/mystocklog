@@ -7,6 +7,10 @@ interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   FMP_API_KEY?: string;
+  GOOGLE_SHEETS_ID?: string;
+  GOOGLE_SHEETS_API_KEY?: string;
+  GOOGLE_SHEETS_MASTER_RANGE?: string;
+  GOOGLE_SHEETS_HISTORY_RANGE?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -32,7 +36,7 @@ const worker = {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/market-data") {
-      return handleMarketData(request, env.DB, env.FMP_API_KEY);
+      return handleMarketData(request, env.DB, env);
     }
 
     if (url.pathname === "/_vinext/image") {

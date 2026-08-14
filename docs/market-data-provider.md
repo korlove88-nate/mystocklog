@@ -4,7 +4,9 @@
 
 ## 결론
 
-V1 기본 Provider는 **Financial Modeling Prep(FMP)** 로 선정한다. React UI는 `MarketDataProvider` 인터페이스만 사용하며 FMP 호출은 `api/market-data.ts` 서버 함수에 격리한다. 키가 없거나 API가 실패하면 `ReferenceSnapshotProvider` 역할의 기존 스냅샷을 종목별 fallback으로 사용한다.
+가격과 가격이력의 기본 Provider는 **GoogleFinance → Google Sheets**다. React UI는 `MarketDataProvider` 인터페이스만 사용하며 외부 호출은 `api/market-data.ts` 서버 함수에 격리한다. 기업정보는 FMP, 영속 스냅샷은 D1, 최종 fallback은 ReferenceSnapshot을 사용한다.
+
+필드별 우선순위는 가격/이력 `GoogleFinance → FMP → 저장값 → Reference`, 기업정보 `FMP → 저장값 → Reference`다. 일반 페이지 로드는 외부 Provider를 호출하지 않고 D1 저장값만 읽는다. 수동 또는 예약 갱신은 10종목을 한 요청으로 처리하여 Google Sheets의 두 범위를 각각 한 번만 읽는다. FMP 기업정보는 최대 7일 캐시하고 GoogleFinance가 누락된 필드만 보완한다.
 
 ## 후보 비교
 

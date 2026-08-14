@@ -33,8 +33,10 @@ export default async function handler(request: Request): Promise<Response> {
   const cycle = refreshCycle()
   const cacheKey = new Request(`${url.origin}/api/market-data-cache/v2/${cycle}/${encodeURIComponent(symbol)}`)
   if (!forceRefresh && workerCache) {
-    const cached = await workerCache.match(cacheKey)
-    if (cached) return new Response(cached.body, { status: cached.status, headers: { ...Object.fromEntries(cached.headers), 'X-Market-Cache': 'HIT' } })
+    try {
+      const cached = await workerCache.match(cacheKey)
+      if (cached) return new Response(cached.body, { status: cached.status, headers: { ...Object.fromEntries(cached.headers), 'X-Market-Cache': 'HIT' } })
+    } catch { /* Some Sites runtimes expose Cache API without a usable default cache. */ }
   }
 
   const [quoteResult, profileResult, historyResult] = await Promise.allSettled([
@@ -68,6 +70,8 @@ export default async function handler(request: Request): Promise<Response> {
       marketCap: numberOrNull(quoteRaw?.marketCap ?? profileRaw?.mktCap), pe: numberOrNull(quoteRaw?.pe), eps: numberOrNull(quoteRaw?.eps) },
     historicalPrices, historyComplete, updatedAt: new Date().toISOString(), refreshCycle: cycle,
   }, { headers: { 'Cache-Control': `public, max-age=0, s-maxage=${CACHE_SECONDS}`, 'X-Market-Cache': forceRefresh ? 'REFRESH' : 'MISS' } })
-  if (workerCache) await workerCache.put(cacheKey, response.clone())
+  if (workerCache) {
+    try { await workerCache.put(cacheKey, response.clone()) } catch { /* CDN s-maxage still applies. */ }
+  }
   return response
 }

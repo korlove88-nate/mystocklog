@@ -22,7 +22,7 @@ type ApiConfig = {fmpKey:string;sheetsKey:string;sheetId:string;supabaseUrl:stri
 type Connection = 'idle'|'testing'|'ok'|'error'
 
 const emptyConfig:ApiConfig={fmpKey:'',sheetsKey:'',sheetId:'',supabaseUrl:'',supabaseAnonKey:'',openAiKey:''}
-const APP_VERSION='v1.32'
+const APP_VERSION='v1.33'
 const tags=['가격','실적','이슈','리스크','전략']
 const periods:Period[]=['1M','3M','6M','1Y','3Y','5Y']
 const currentYear=new Date().getUTCFullYear()
@@ -119,7 +119,7 @@ function OverviewPriceChart({data}:{data:{date:string;price:number}[]}){
   const containerRef=useRef<HTMLDivElement>(null)
   const [width,setWidth]=useState(0)
   useEffect(()=>{const element=containerRef.current;if(!element)return;const update=()=>setWidth(Math.max(0,Math.floor(element.clientWidth)));update();const observer=new ResizeObserver(update);observer.observe(element);return()=>observer.disconnect()},[])
-  return <div className="snapshot-chart-body" ref={containerRef}>{width>0&&<LineChart width={width} height={92} data={data} margin={{top:4,right:8,left:0,bottom:2}}><CartesianGrid stroke="#1b3048" vertical={false}/><XAxis dataKey="date" minTickGap={36} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>String(value).slice(5).replace('-','.')}/><YAxis domain={['auto','auto']} width={43} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>`$${Number(value).toFixed(0)}`}/><Tooltip contentStyle={{background:'#0b1522',border:'1px solid #315477',borderRadius:8,fontSize:10}} labelFormatter={value=>String(value)} formatter={value=>[`$${Number(value).toFixed(2)}`,'종가']}/><Line dataKey="price" stroke="#58a6ff" dot={false} activeDot={{r:3,fill:'#f4c45e'}} strokeWidth={1.35}/></LineChart>}</div>
+  return <div className="snapshot-chart-body" ref={containerRef}>{width>0&&<LineChart width={width} height={118} data={data} margin={{top:5,right:8,left:0,bottom:3}}><CartesianGrid stroke="#1b3048" vertical={false}/><XAxis dataKey="date" minTickGap={36} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>String(value).slice(5).replace('-','.')}/><YAxis domain={['auto','auto']} width={43} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>`$${Number(value).toFixed(0)}`}/><Tooltip contentStyle={{background:'#0b1522',border:'1px solid #315477',borderRadius:8,fontSize:10}} labelFormatter={value=>String(value)} formatter={value=>[`$${Number(value).toFixed(2)}`,'종가']}/><Line dataKey="price" stroke="#58a6ff" dot={false} activeDot={{r:3,fill:'#f4c45e'}} strokeWidth={1.35}/></LineChart>}</div>
 }
 function MetricGrid({stock}:{stock:StockSnapshot}){
   const {highDate,lowDate}=stockExtremes(stock)

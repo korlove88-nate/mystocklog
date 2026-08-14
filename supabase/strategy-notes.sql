@@ -1,4 +1,6 @@
 -- Run once in Supabase SQL Editor. This schema requires Supabase Auth.
+-- Enable Anonymous Sign-Ins in Authentication > Providers before using the app.
+-- Anonymous sessions persist in browser storage. Clearing site data loses that session identity.
 create extension if not exists pgcrypto;
 
 create table if not exists public.strategy_notes (

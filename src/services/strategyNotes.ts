@@ -12,6 +12,15 @@ export class StrategyNotesService {
   readonly client: SupabaseClient
   constructor(url: string, anonKey: string) { this.client = createClient(url, anonKey, {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}) }
   async user(): Promise<User|null> { return (await this.client.auth.getUser()).data.user ?? null }
+  async ensureAnonymousUser(): Promise<User> {
+    const {data:{session},error:sessionError}=await this.client.auth.getSession()
+    if(sessionError)throw sessionError
+    if(session?.user)return session.user
+    const {data,error}=await this.client.auth.signInAnonymously()
+    if(error)throw error
+    if(!data.user)throw new Error('Anonymous sign-in did not return a user')
+    return data.user
+  }
   async signIn(email:string,password:string) { const {data,error}=await this.client.auth.signInWithPassword({email,password}); if(error)throw error; return data.user }
   async signUp(email:string,password:string) { const {data,error}=await this.client.auth.signUp({email,password}); if(error)throw error; return data.user }
   async signOut() { const {error}=await this.client.auth.signOut(); if(error)throw error }

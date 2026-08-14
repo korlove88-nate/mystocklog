@@ -13,8 +13,8 @@
 
 - `GOOGLE_SHEETS_ID`: 스프레드시트 URL의 `/d/`와 `/edit` 사이 값
 - `GOOGLE_SHEETS_API_KEY`: Google Sheets API 키
-- `GOOGLE_SHEETS_MASTER_RANGE`: `STOCK_MASTER!A:J`
-- `GOOGLE_SHEETS_HISTORY_RANGE`: `PRICE_HISTORY!A:C`
+- `GOOGLE_SHEETS_MASTER_RANGE`: 현재 템플릿은 `STOCK_MASTER!A3:P13`
+- `GOOGLE_SHEETS_HISTORY_RANGE`: 종목별 `H_*` 탭을 자동 인식하려면 `PER_TICKER`
 
 키와 Spreadsheet ID는 앱 화면이나 클라이언트 코드에 넣지 않고 Sites의 보안 환경변수에 저장한다.
 
@@ -22,7 +22,7 @@
 
 `STOCK_MASTER`: `ticker, exchange, googlefinance_symbol, current_price, change_percent, high_52w, low_52w, status, updated_at, market_date`
 
-`PRICE_HISTORY`: `ticker, date, close`
+현재 템플릿의 `H_NVDA`·`H_AAPL`·…·`H_BRKB` 탭은 `A6:B1200` 범위를 사용한다. 어댑터는 `STOCK_MASTER`의 `History Sheet` 열을 읽어 한 번의 batchGet으로 모든 가격 이력을 가져온다. 단일 `PRICE_HISTORY` 형식도 호환 목적으로 유지한다.
 
 가격 이력은 최소 3년(약 1,100일 범위)을 내려받는다. 이동평균, 기간 수익률, YTD, 연도별 MDD는 시트가 아니라 앱의 `metricsCalculator`가 계산한다.
 
@@ -30,4 +30,3 @@
 
 - `BRK-B`: 앱/FMP는 `BRK-B`, GoogleFinance는 `NYSE:BRK.B`를 사용한다.
 - `SPCX`: SpaceX는 비상장사라 GoogleFinance와 FMP의 상장주식 가격 데이터가 없다. 임의 가격을 만들지 않고 `—`로 유지한다.
-

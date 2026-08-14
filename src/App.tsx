@@ -1,7 +1,7 @@
 'use client'
 /* eslint-disable @typescript-eslint/no-unused-vars -- legacy settings panel retained during provider migration */
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { ChevronDown, ChevronRight, FileSpreadsheet, Home, KeyRound, Menu, NotebookPen, Pencil, RefreshCw, Save, Search, Settings, Trash2, X } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { referenceSnapshot } from './data/referenceSnapshot'
@@ -22,7 +22,7 @@ type ApiConfig = {fmpKey:string;sheetsKey:string;sheetId:string;supabaseUrl:stri
 type Connection = 'idle'|'testing'|'ok'|'error'
 
 const emptyConfig:ApiConfig={fmpKey:'',sheetsKey:'',sheetId:'',supabaseUrl:'',supabaseAnonKey:'',openAiKey:''}
-const APP_VERSION='v1.30'
+const APP_VERSION='v1.31'
 const tags=['가격','실적','이슈','리스크','전략']
 const periods:Period[]=['1M','3M','6M','1Y','3Y','5Y']
 const currentYear=new Date().getUTCFullYear()
@@ -111,9 +111,15 @@ function OverviewSnapshot({stock}:{stock:StockSnapshot}){
   const {highDate,lowDate}=stockExtremes(stock)
   return <section className="overview-snapshot overview-snapshot-top">
     <div className="snapshot-price"><span>현재가</span><strong>{fmt(stock.price,'money')} <small>USD</small></strong><em className={tone(stock.changePercent)}>{fmt(priceChange,'money')} ({fmt(stock.changePercent,'percent')})</em><small>최근 저장 시장 데이터 기준</small></div>
-    <div className="snapshot-chart snapshot-chart-detailed"><div className="snapshot-chart-head"><span>최근 1개월 가격 흐름 <small>일봉</small></span><div><b>고가 {fmt(monthHigh,'money')}</b><b>저가 {fmt(monthLow,'money')}</b><b>최근 {fmt(monthLast,'money')}</b></div></div><div className="snapshot-chart-body">{recent.length>1?<ResponsiveContainer width="100%" height="100%"><LineChart data={recent} margin={{top:6,right:8,left:0,bottom:4}}><CartesianGrid stroke="#1b3048" vertical={false}/><XAxis dataKey="date" minTickGap={36} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>String(value).slice(5).replace('-','.')}/><YAxis domain={['auto','auto']} width={46} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>`$${Number(value).toFixed(0)}`}/><Tooltip contentStyle={{background:'#0b1522',border:'1px solid #315477',borderRadius:8,fontSize:10}} labelFormatter={value=>String(value)} formatter={value=>[`$${Number(value).toFixed(2)}`,'종가']}/><Line dataKey="price" stroke="#58a6ff" dot={false} activeDot={{r:4,fill:'#f4c45e'}} strokeWidth={2.2}/></LineChart></ResponsiveContainer>:<b className="chart-unavailable">최근 1개월 가격 데이터가 없습니다.</b>}</div></div>
+    <div className="snapshot-chart snapshot-chart-detailed"><div className="snapshot-chart-head"><span>최근 1개월 가격 흐름 <small>일봉</small></span><div><b>고가 {fmt(monthHigh,'money')}</b><b>저가 {fmt(monthLow,'money')}</b><b>최근 {fmt(monthLast,'money')}</b></div></div>{recent.length>1?<OverviewPriceChart data={recent}/>:<div className="snapshot-chart-body"><b className="chart-unavailable">최근 1개월 가격 데이터가 없습니다.</b></div>}</div>
     <div className="snapshot-stat"><span>시가총액</span><strong>{fmt(stock.marketCap,'cap')}</strong></div><div className="snapshot-stat"><span>PER (TTM)</span><strong>{fmt(stock.pe,'number')}</strong></div><div className="snapshot-stat"><span>EPS (TTM)</span><strong>{fmt(stock.eps,'money')}</strong></div><div className="snapshot-stat"><span>52주 고점</span><strong>{fmt(stock.high52,'money')}</strong><small>{highDate??'—'}</small></div><div className="snapshot-stat"><span>52주 저점</span><strong>{fmt(stock.low52,'money')}</strong><small>{lowDate??'—'}</small></div>
   </section>
+}
+function OverviewPriceChart({data}:{data:{date:string;price:number}[]}){
+  const containerRef=useRef<HTMLDivElement>(null)
+  const [width,setWidth]=useState(0)
+  useEffect(()=>{const element=containerRef.current;if(!element)return;const update=()=>setWidth(Math.max(0,Math.floor(element.clientWidth)));update();const observer=new ResizeObserver(update);observer.observe(element);return()=>observer.disconnect()},[])
+  return <div className="snapshot-chart-body" ref={containerRef}>{width>0&&<LineChart width={width} height={118} data={data} margin={{top:6,right:8,left:0,bottom:4}}><CartesianGrid stroke="#1b3048" vertical={false}/><XAxis dataKey="date" minTickGap={36} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>String(value).slice(5).replace('-','.')}/><YAxis domain={['auto','auto']} width={46} tick={{fill:'#6f8299',fontSize:8}} tickFormatter={value=>`$${Number(value).toFixed(0)}`}/><Tooltip contentStyle={{background:'#0b1522',border:'1px solid #315477',borderRadius:8,fontSize:10}} labelFormatter={value=>String(value)} formatter={value=>[`$${Number(value).toFixed(2)}`,'종가']}/><Line dataKey="price" stroke="#58a6ff" dot={false} activeDot={{r:4,fill:'#f4c45e'}} strokeWidth={2.2}/></LineChart>}</div>
 }
 function MetricGrid({stock}:{stock:StockSnapshot}){
   const {highDate,lowDate}=stockExtremes(stock)

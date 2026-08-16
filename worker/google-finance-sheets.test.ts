@@ -51,10 +51,11 @@ describe('GoogleFinance Bridge V2.1',()=>{
   })
 
   it('keeps missing market items null and uses US10Y Display Value directly',()=>{
-    const items=marketOverviewFromValues([['Key','Display Value','Change Percent','Display Change'],['NASDAQ','26200','0.6%',''],['US10Y','4.48','','0.06%']])
+    const items=marketOverviewFromValues([['Key','Display Value','Change Percent','Display Change'],['NASDAQ','26200','0.6%',''],['US10Y','4.48','','0.06%'],['USDKRW','1382.55','-0.2%','']])
     expect(items.find(item=>item.key==='nasdaq')?.value).toBe(26200)
     expect(items.find(item=>item.key==='sp500')?.value).toBeNull()
     expect(items.find(item=>item.key==='us10y')?.value).toBe(4.48)
     expect(items.find(item=>item.key==='us10y')?.change).toBeCloseTo(6)
+    expect(items.find(item=>item.key==='usdkrw')).toMatchObject({value:1382.55,change:-.002})
   })
 })

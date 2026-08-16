@@ -26,8 +26,8 @@ async function isolatedRanges(config:SheetConfig,ranges:string[]):Promise<Map<st
 }
 const tickerOf=(row:SheetRow)=>(row.ticker||row.app_ticker||row.symbol||row.googlefinance_symbol||row.gf_symbol||'').trim().toUpperCase()
 const historyFromValues=(values:unknown):HistoricalPrice[]=>{if(!Array.isArray(values))return[];const rows=values as unknown[][];const headerIndex=rows.findIndex(row=>row.some(cell=>headerKey(cell)==='date')&&row.some(cell=>['close','price'].includes(headerKey(cell))));const dateIndex=headerIndex>=0?rows[headerIndex].findIndex(cell=>headerKey(cell)==='date'):0;const closeIndex=headerIndex>=0?rows[headerIndex].findIndex(cell=>['close','price'].includes(headerKey(cell))):1;return rows.slice(headerIndex>=0?headerIndex+1:0).map(row=>({date:parseGoogleSheetDate(row[dateIndex]),close:numberOrNull(row[closeIndex])})).filter((point):point is {date:string;close:number}=>Boolean(point.date)&&point.close!==null&&point.close>0).map(point=>({date:point.date,close:point.close,adjustedClose:point.close})).sort((a,b)=>a.date.localeCompare(b.date))}
-const marketAliases:Record<MarketOverviewItem['key'],string[]>={sp500:['SP500','S&P500','S_P500','.INX','^GSPC','INDEXSP:.INX'],nasdaq:['NASDAQ','.IXIC','^IXIC','INDEXNASDAQ:.IXIC'],dow:['DOW','DJI','.DJI','^DJI','INDEXDJX:.DJI'],vix:['VIX','^VIX','CBOE:VIX','INDEXCBOE:VIX'],us10y:['US10Y','TNX','^TNX','INDEXCBOE:TNX']}
-const labels:Record<MarketOverviewItem['key'],string>={sp500:'S&P500',nasdaq:'NASDAQ',dow:'DOW',vix:'VIX',us10y:'US10Y'}
+const marketAliases:Record<MarketOverviewItem['key'],string[]>={sp500:['SP500','S&P500','S_P500','.INX','^GSPC','INDEXSP:.INX'],nasdaq:['NASDAQ','.IXIC','^IXIC','INDEXNASDAQ:.IXIC'],dow:['DOW','DJI','.DJI','^DJI','INDEXDJX:.DJI'],vix:['VIX','^VIX','CBOE:VIX','INDEXCBOE:VIX'],us10y:['US10Y','TNX','^TNX','INDEXCBOE:TNX'],usdkrw:['USDKRW','USD/KRW','CURRENCY:USDKRW']}
+const labels:Record<MarketOverviewItem['key'],string>={sp500:'S&P500',nasdaq:'NASDAQ',dow:'DOW',vix:'VIX',us10y:'US10Y',usdkrw:'USD/KRW'}
 const marketKey=(row:SheetRow)=>(row.key||row.market_key||row.ticker||row.item||row.index||row.name||row.label||row.symbol||'').trim().toUpperCase()
 export function marketOverviewFromValues(values:unknown):MarketOverviewItem[]{
   const rows=table(values)
@@ -55,7 +55,7 @@ export async function loadGoogleFinanceWorkbook(config:SheetConfig):Promise<Goog
   const records:Record<string,GoogleFinanceRecord>={}
   stocks.forEach((stock,index)=>{const row=masterByTicker.get(stock.ticker)??{},historyRange=historyRanges[index];const historicalPrices=historyFromValues(historyRange?historyResults.get(historyRange):undefined);const price=numberOrNull(row.current_price||row.price),marketDate=(row.market_date||row.trade_time||historicalPrices.at(-1)?.date||'').slice(0,10)||null;records[stock.ticker]={quote:price===null?null:{ticker:stock.ticker,price,previousClose:numberOrNull(row.previous_close),changePercent:percentOrNull(row.change_percent||row.change_pct||row.change),marketDate},fundamentals:{ticker:stock.ticker,companyName:stock.company,sector:stock.sector,marketCap:numberOrNull(row.gf_market_cap||row.market_cap),pe:numberOrNull(row.gf_per||row.per||row.pe),eps:numberOrNull(row.gf_eps||row.eps)},historicalPrices,high52:numberOrNull(row.high_52w||row['52w_high']||row.high52),low52:numberOrNull(row.low_52w||row['52w_low']||row.low52),status:row.status||null,updatedAt:row.updated_at||row.trade_time||null}})
   let marketOverview:MarketOverviewItem[]
-  try{marketOverview=marketOverviewFromValues((await batchRanges(config,['MARKET_OVERVIEW!A3:J8']))[0]?.values)}catch{marketOverview=marketOverviewFromValues(undefined)}
+  try{marketOverview=marketOverviewFromValues((await batchRanges(config,['MARKET_OVERVIEW!A3:J20']))[0]?.values)}catch{marketOverview=marketOverviewFromValues(undefined)}
   return{records,catalog:{stocks,groups},marketOverview}
 }
 

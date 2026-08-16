@@ -36,8 +36,9 @@ export function marketOverviewFromValues(values:unknown):MarketOverviewItem[]{
     const displayValue=numberOrNull(row?.display_value)
     const value=displayValue??numberOrNull(row?.current_value||row?.value||row?.price||row?.raw_price)
     const directBp=numberOrNull(row?.change_bp||row?.bp_change)
+    const displayChange=percentOrNull(row?.display_change)
     const rawChange=percentOrNull(row?.change_percent||row?.change_pct||row?.change)
-    return{key,label:labels[key],value,change:key==='us10y'?directBp:rawChange,changeUnit:key==='us10y'?'bp':'percent',source:'googlefinance'}
+    return{key,label:labels[key],value,change:key==='us10y'?(directBp??(displayChange!==null?displayChange*10_000:null)):rawChange,changeUnit:key==='us10y'?'bp':'percent',source:'googlefinance'}
   })
 }
 

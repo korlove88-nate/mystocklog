@@ -37,6 +37,18 @@ export function calculateMovingAverage(prices: HistoricalPrice[], period: number
   return window.reduce((sum, point) => sum + analyticalPrice(point), 0) / period
 }
 
+export type MddProximityLevel = 'normal'|'interest'|'near'|'mdd'
+export type MddProximity = { ratio:number; level:MddProximityLevel } | null
+
+export function calculateMddProximity(drawdown52:MetricValue,mddValues:MetricValue[]):MddProximity{
+  if(!valid(drawdown52)||mddValues.length!==3||mddValues.some(value=>!valid(value)))return null
+  const sorted=(mddValues as number[]).map(Math.abs).sort((a,b)=>a-b)
+  const median=sorted[1]
+  if(!valid(median)||median<=0)return null
+  const ratio=Math.abs(drawdown52)/median
+  return{ratio,level:ratio>=1?'mdd':ratio>=.85?'near':ratio>=.7?'interest':'normal'}
+}
+
 export type MovingAveragePoint = { date: string; price: number; ma20: MetricValue; ma60: MetricValue; ma120: MetricValue; ma200: MetricValue }
 
 export function calculateMovingAverageSeries(prices: HistoricalPrice[]): MovingAveragePoint[] {

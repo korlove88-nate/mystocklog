@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { HistoricalPrice } from '../types'
-import { calculateAnnualMdd, calculateDrawdown, calculateMetrics, calculateMovingAverage, calculateMovingAverageSeries } from './metricsCalculator'
+import { calculateAnnualMdd, calculateDrawdown, calculateMddProximity, calculateMetrics, calculateMovingAverage, calculateMovingAverageSeries } from './metricsCalculator'
 
 const series = (values: number[], start = '2026-01-02'): HistoricalPrice[] => {
   const startDate = new Date(`${start}T00:00:00Z`)
@@ -44,5 +44,13 @@ describe('metricsCalculator', () => {
     expect(result[18].ma20).toBeNull()
     expect(result[19].ma20).toBe(10.5)
     expect(result[19].ma60).toBeNull()
+  })
+
+  it('classifies MDD proximity from the median of exactly three annual MDD values',()=>{
+    expect(calculateMddProximity(-.18,[-.2,-.25,-.3])).toEqual({ratio:.72,level:'interest'})
+    expect(calculateMddProximity(-.225,[-.2,-.25,-.3])?.level).toBe('near')
+    expect(calculateMddProximity(-.25,[-.2,-.25,-.3])?.level).toBe('mdd')
+    expect(calculateMddProximity(-.1,[-.2,-.25,-.3])?.level).toBe('normal')
+    expect(calculateMddProximity(-.18,[-.2,null,-.3])).toBeNull()
   })
 })

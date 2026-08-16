@@ -24,6 +24,10 @@ export type StockFundamentals = {
   eps?: MetricValue
 }
 export type MarketFieldSource = 'googlefinance' | 'fmp' | 'stored' | 'reference'
+export type StockMasterEntry = { ticker:string; company:string; sector:string|null; active:boolean; sortOrder:number }
+export type StockGroup = { id:string; name:string; sortOrder:number; tickers:string[] }
+export type MarketOverviewItem = { key:'sp500'|'nasdaq'|'dow'|'vix'|'us10y'; label:string; value:MetricValue; change:MetricValue; changeUnit:'percent'|'bp'; source:'googlefinance'|'stored' }
+export type MarketCatalog = { stocks:StockMasterEntry[]; groups:StockGroup[] }
 export type StockDataSources = {
   price: MarketFieldSource
   history: MarketFieldSource

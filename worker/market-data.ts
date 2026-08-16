@@ -1,6 +1,7 @@
 import { marketSnapshotsSchema } from '../db/schema'
-import type { StockDataSources } from '../src/types'
-import { loadGoogleFinanceSheet, type GoogleFinanceRecord } from './google-finance-sheets'
+import { defaultCatalog, emptyMarketOverview } from '../src/data/defaultCatalog'
+import type { MarketCatalog, MarketOverviewItem, StockDataSources } from '../src/types'
+import { loadGoogleFinanceSheet, loadGoogleFinanceWorkbook, type GoogleFinanceRecord } from './google-finance-sheets'
 import { symbolMaster } from './symbol-master'
 
 const FMP_BASE_URL = 'https://financialmodelingprep.com/stable'
@@ -21,6 +22,7 @@ type StoredPayload = {
   providerMetrics?: { high52: number | null; low52: number | null }
   stale?: boolean
 }
+type DashboardMeta = { catalog:MarketCatalog; marketOverview:MarketOverviewItem[]; updatedAt:string|null; refreshCycle:string|null }
 export type MarketBindings = {
   FMP_API_KEY?: string
   GOOGLE_SHEETS_ID?: string
@@ -42,17 +44,20 @@ const freshFundamentals=(payload:StoredPayload|null)=>{const value=payload?.fund
 
 async function loadStored(db:D1Database,symbol:string){const row=await db.prepare('SELECT payload, market_date, updated_at, refresh_cycle FROM market_snapshots WHERE symbol = ?1').bind(symbol).first<SnapshotRow>();if(!row)return {row:null,payload:null};try{return{row,payload:JSON.parse(row.payload) as StoredPayload}}catch{return{row,payload:null}}}
 async function saveStored(db:D1Database,symbol:string,payload:StoredPayload,marketDate:string|null){await db.prepare(`INSERT INTO market_snapshots (symbol,payload,market_date,updated_at,refresh_cycle) VALUES (?1,?2,?3,?4,?5) ON CONFLICT(symbol) DO UPDATE SET payload=excluded.payload,market_date=excluded.market_date,updated_at=excluded.updated_at,refresh_cycle=excluded.refresh_cycle`).bind(symbol,JSON.stringify(payload),marketDate,payload.updatedAt,payload.refreshCycle).run()}
+async function loadDashboardMeta(db:D1Database):Promise<DashboardMeta>{const entry=await loadStored(db,'__DASHBOARD__');if(!entry.row?.payload)return{catalog:defaultCatalog,marketOverview:emptyMarketOverview,updatedAt:null,refreshCycle:null};try{return JSON.parse(entry.row.payload) as DashboardMeta}catch{return{catalog:defaultCatalog,marketOverview:emptyMarketOverview,updatedAt:null,refreshCycle:null}}}
+async function saveDashboardMeta(db:D1Database,meta:DashboardMeta){await db.prepare(`INSERT INTO market_snapshots (symbol,payload,market_date,updated_at,refresh_cycle) VALUES ('__DASHBOARD__',?1,NULL,?2,?3) ON CONFLICT(symbol) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at,refresh_cycle=excluded.refresh_cycle`).bind(JSON.stringify(meta),meta.updatedAt??new Date().toISOString(),meta.refreshCycle??refreshCycle()).run()}
 
 async function refreshSymbol(symbol:string,stored:StoredPayload|null,gf:GoogleFinanceRecord|undefined,bindings:MarketBindings):Promise<StoredPayload|null>{
   const mapping=symbolMaster[symbol]
   const fmpSymbol=mapping?.fmpSymbol
   const apiKey=bindings.FMP_API_KEY??''
   const needFundamentals=!freshFundamentals(stored)
+  const needProfile=needFundamentals&&(!gf?.fundamentals?.companyName||!gf?.fundamentals?.sector)
   const needQuoteFallback=!gf?.quote
   const needHistoryFallback=!gf?.historicalPrices.length&&!stored?.historicalPrices.length
   let quoteRaw:Record<string,unknown>|null=null,profileRaw:Record<string,unknown>|null=null,fmpHistory:PricePoint[]=[]
   if(apiKey&&fmpSymbol&&(needFundamentals||needQuoteFallback)){
-    const [quoteResult,profileResult]=await Promise.allSettled([fmp(`/quote?symbol=${encodeURIComponent(fmpSymbol)}`,apiKey),needFundamentals?fmp(`/profile?symbol=${encodeURIComponent(fmpSymbol)}`,apiKey):Promise.resolve([])])
+    const [quoteResult,profileResult]=await Promise.allSettled([fmp(`/quote?symbol=${encodeURIComponent(fmpSymbol)}`,apiKey),needProfile?fmp(`/profile?symbol=${encodeURIComponent(fmpSymbol)}`,apiKey):Promise.resolve([])])
     quoteRaw=quoteResult.status==='fulfilled'?first(quoteResult.value) as Record<string,unknown>|null:null
     profileRaw=profileResult.status==='fulfilled'?first(profileResult.value) as Record<string,unknown>|null:null
   }
@@ -77,6 +82,18 @@ export async function handleMarketData(request:Request,db:D1Database,bindings:Ma
     await db.prepare(marketSnapshotsSchema).run()
     const cached=await db.prepare(`SELECT COUNT(*) AS count FROM market_snapshots WHERE payload LIKE '%googlefinance%'`).first<{count:number}>()
     return Response.json({fmpConfigured:Boolean(bindings.FMP_API_KEY),googleSheetsConfigured:Boolean(bindings.GOOGLE_SHEETS_ID&&bindings.GOOGLE_SHEETS_API_KEY),googleSheetsCached:Number(cached?.count??0),durableStorage:true})
+  }
+  if(url.searchParams.get('dashboard')==='1'){
+    await db.prepare(marketSnapshotsSchema).run()
+    const force=request.headers.get('x-refresh-market-data')==='1'
+    let meta=await loadDashboardMeta(db)
+    if(!force){const entries=await Promise.all(meta.catalog.stocks.filter(stock=>stock.active).map(async stock=>[stock.ticker,await loadStored(db,stock.ticker)] as const));const payloads=Object.fromEntries(entries.filter(([,entry])=>entry.payload).map(([ticker,entry])=>[ticker,{...entry.payload,stale:false}]));return response({payloads,catalog:meta.catalog,marketOverview:meta.marketOverview},Object.keys(payloads).length?'D1-DASHBOARD-HIT':'D1-DASHBOARD-EMPTY')}
+    let googleRecords:Record<string,GoogleFinanceRecord>={}
+    if(bindings.GOOGLE_SHEETS_ID&&bindings.GOOGLE_SHEETS_API_KEY){try{const workbook=await loadGoogleFinanceWorkbook({spreadsheetId:bindings.GOOGLE_SHEETS_ID,apiKey:bindings.GOOGLE_SHEETS_API_KEY,masterRange:bindings.GOOGLE_SHEETS_MASTER_RANGE??'STOCK_MASTER!A1:Z1000',historyRange:bindings.GOOGLE_SHEETS_HISTORY_RANGE??'PER_TICKER'});googleRecords=workbook.records;if(workbook.catalog.stocks.length&&workbook.catalog.groups.length)meta={catalog:workbook.catalog,marketOverview:workbook.marketOverview,updatedAt:new Date().toISOString(),refreshCycle:refreshCycle()}}catch{googleRecords={}}}
+    const stocks=meta.catalog.stocks.filter(stock=>stock.active),entries=await Promise.all(stocks.map(async stock=>[stock.ticker,await loadStored(db,stock.ticker)] as const)),payloads:Record<string,StoredPayload>={}
+    for(let index=0;index<entries.length;index+=5){await Promise.all(entries.slice(index,index+5).map(async([symbol,entry])=>{const refreshed=await refreshSymbol(symbol,entry.payload,googleRecords[symbol],bindings);if(refreshed){const marketDate=typeof refreshed.quote?.marketDate==='string'?refreshed.quote.marketDate:refreshed.historicalPrices.at(-1)?.date??entry.row?.market_date??null;await saveStored(db,symbol,refreshed,marketDate);payloads[symbol]=refreshed}else if(entry.payload)payloads[symbol]={...entry.payload,stale:true}}))}
+    await saveDashboardMeta(db,meta)
+    return Object.keys(payloads).length?response({payloads,catalog:meta.catalog,marketOverview:meta.marketOverview},'HYBRID-DASHBOARD-REFRESH'):response({error:'Providers unavailable',catalog:meta.catalog,marketOverview:meta.marketOverview},'PROVIDER-FAIL',502)
   }
   const symbolsParam=url.searchParams.get('symbols')
   const symbols=(symbolsParam?symbolsParam.split(','):[url.searchParams.get('symbol')??'']).map(value=>value.trim().toUpperCase()).filter(Boolean)

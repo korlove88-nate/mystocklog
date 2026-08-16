@@ -1,36 +1,38 @@
-import type { HistoricalPrice, StockFundamentals, StockQuote } from '../src/types'
+import type { HistoricalPrice, MarketCatalog, MarketOverviewItem, StockFundamentals, StockQuote } from '../src/types'
 
-type SheetConfig = { spreadsheetId: string; apiKey: string; masterRange: string; historyRange: string }
+type SheetConfig = { spreadsheetId:string; apiKey:string; masterRange:string; historyRange:string }
 type SheetRow = Record<string,string>
 export type GoogleFinanceRecord = { quote:StockQuote|null; fundamentals:StockFundamentals|null; historicalPrices:HistoricalPrice[]; high52:number|null; low52:number|null; status:string|null; updatedAt:string|null }
+export type GoogleFinanceWorkbook = { records:Record<string,GoogleFinanceRecord>; catalog:MarketCatalog; marketOverview:MarketOverviewItem[] }
 
 const headerKey=(value:unknown)=>String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')
-const numberOrNull=(value:unknown)=>{
-  if(typeof value==='number'&&Number.isFinite(value))return value
-  if(typeof value!=='string'||!value.trim())return null
-  const raw=value.trim(),negative=/^\(.*\)$/.test(raw),suffix=raw.match(/([TBM])(?:\s*)$/i)?.[1]?.toUpperCase()
-  const parsed=Number(raw.replace(/[()$,%xTBM]/gi,'').trim())
-  if(!Number.isFinite(parsed))return null
-  const multiplier=suffix==='T'?1e12:suffix==='B'?1e9:suffix==='M'?1e6:1
-  return (negative?-parsed:parsed)*multiplier
-}
+const numberOrNull=(value:unknown)=>{if(typeof value==='number'&&Number.isFinite(value))return value;if(typeof value!=='string'||!value.trim())return null;const raw=value.trim(),negative=/^\(.*\)$/.test(raw),suffix=raw.match(/([TBM])(?:\s*)$/i)?.[1]?.toUpperCase();const parsed=Number(raw.replace(/[()$,%xTBM]/gi,'').replaceAll(',','').trim());if(!Number.isFinite(parsed))return null;return(negative?-parsed:parsed)*(suffix==='T'?1e12:suffix==='B'?1e9:suffix==='M'?1e6:1)}
 const percentOrNull=(value:unknown)=>{const parsed=numberOrNull(value);return parsed===null?null:typeof value==='string'&&value.includes('%')?parsed/100:Math.abs(parsed)>1?parsed/100:parsed}
+const active=(value:unknown)=>!['N','NO','FALSE','0','OFF','INACTIVE'].includes(String(value??'Y').trim().toUpperCase())
+const order=(value:unknown,fallback:number)=>numberOrNull(value)??fallback
 export const parseGoogleSheetDate=(value:unknown)=>{const text=String(value??'').trim();if(/^\d{4}-\d{2}-\d{2}$/.test(text))return text;const serial=Number(text);if(!Number.isFinite(serial)||serial<1)return'';return new Date(Date.UTC(1899,11,30)+Math.floor(serial)*86_400_000).toISOString().slice(0,10)}
 const table=(values:unknown):SheetRow[]=>{if(!Array.isArray(values)||!Array.isArray(values[0]))return[];const rows=values as unknown[][],headers=rows[0].map(headerKey);return rows.slice(1).map(row=>Object.fromEntries(headers.map((header,index)=>[header,String(row[index]??'').trim()]))) }
 const endpoint=(config:SheetConfig,path:string)=>`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(config.spreadsheetId)}/${path}${path.includes('?')?'&':'?'}key=${encodeURIComponent(config.apiKey)}`
-async function readRange(config:SheetConfig,range:string){const result=await fetch(endpoint(config,`values/${encodeURIComponent(range)}?majorDimension=ROWS`),{signal:AbortSignal.timeout(12_000)});if(!result.ok)throw new Error(`Google Sheets ${result.status}`);const body=await result.json() as {values?:unknown};return table(body.values)}
-async function readHistoryRanges(config:SheetConfig,ranges:string[]){if(!ranges.length)return[];const query=ranges.map(range=>`ranges=${encodeURIComponent(range)}`).join('&');const result=await fetch(endpoint(config,`values:batchGet?majorDimension=ROWS&${query}`),{signal:AbortSignal.timeout(20_000)});if(!result.ok)throw new Error(`Google Sheets ${result.status}`);const body=await result.json() as {valueRanges?:Array<{values?:unknown}>};return body.valueRanges??[]}
+async function batchRanges(config:SheetConfig,ranges:string[]){const query=ranges.map(range=>`ranges=${encodeURIComponent(range)}`).join('&');const result=await fetch(endpoint(config,`values:batchGet?majorDimension=ROWS&${query}`),{signal:AbortSignal.timeout(20_000)});if(!result.ok)throw new Error(`Google Sheets ${result.status}`);const body=await result.json() as {valueRanges?:Array<{values?:unknown}>};return body.valueRanges??[]}
+const tickerOf=(row:SheetRow)=>(row.ticker||row.app_ticker||row.symbol||'').trim().toUpperCase()
+const historyFromValues=(values:unknown):HistoricalPrice[]=>{if(!Array.isArray(values))return[];const rows=values as unknown[][];const headerIndex=rows.findIndex(row=>row.some(cell=>headerKey(cell)==='date')&&row.some(cell=>['close','price'].includes(headerKey(cell))));const dateIndex=headerIndex>=0?rows[headerIndex].findIndex(cell=>headerKey(cell)==='date'):0;const closeIndex=headerIndex>=0?rows[headerIndex].findIndex(cell=>['close','price'].includes(headerKey(cell))):1;return rows.slice(headerIndex>=0?headerIndex+1:0).map(row=>({date:parseGoogleSheetDate(row[dateIndex]),close:numberOrNull(row[closeIndex])})).filter((point):point is {date:string;close:number}=>Boolean(point.date)&&point.close!==null&&point.close>0).map(point=>({date:point.date,close:point.close,adjustedClose:point.close})).sort((a,b)=>a.date.localeCompare(b.date))}
+const marketAliases:Record<MarketOverviewItem['key'],string[]>={sp500:['SP500','S&P500','S_P500','.INX','INDEXSP:.INX'],nasdaq:['NASDAQ','.IXIC','INDEXNASDAQ:.IXIC'],dow:['DOW','DJI','.DJI','INDEXDJX:.DJI'],vix:['VIX','INDEXCBOE:VIX'],us10y:['US10Y','TNX','INDEXCBOE:TNX']}
+const labels:Record<MarketOverviewItem['key'],string>={sp500:'S&P500',nasdaq:'NASDAQ',dow:'DOW',vix:'VIX',us10y:'US10Y'}
 
-export async function loadGoogleFinanceSheet(config:SheetConfig):Promise<Record<string,GoogleFinanceRecord>>{
-  const masterRows=await readRange(config,config.masterRange)
-  const entries=masterRows.map(row=>({row,ticker:(row.ticker||row.app_ticker)?.toUpperCase(),historySheet:row.history_sheet})).filter(entry=>entry.ticker)
-  const perTicker=entries.some(entry=>entry.historySheet)
-  const historyRanges=perTicker?entries.map(entry=>`${entry.historySheet}!A6:B1200`):[config.historyRange]
-  const historyResults=await readHistoryRanges(config,historyRanges)
-  const histories=new Map<string,HistoricalPrice[]>()
-  if(perTicker){entries.forEach((entry,index)=>{const values=historyResults[index]?.values;if(!Array.isArray(values))return;const points=(values as unknown[][]).map(row=>({date:parseGoogleSheetDate(row[0]),close:numberOrNull(row[1])})).filter((point):point is {date:string;close:number}=>/^\d{4}-\d{2}-\d{2}$/.test(point.date)&&point.close!==null&&point.close>0).map(point=>({date:point.date,close:point.close,adjustedClose:point.close}));histories.set(entry.ticker,points.sort((a,b)=>a.date.localeCompare(b.date)))})
-  }else{const rows=table(historyResults[0]?.values);for(const row of rows){const ticker=row.ticker?.toUpperCase(),close=numberOrNull(row.close);if(!ticker||!/^\d{4}-\d{2}-\d{2}$/.test(row.date??'')||close===null||close<=0)continue;const list=histories.get(ticker)??[];list.push({date:row.date,close,adjustedClose:close});histories.set(ticker,list)}}
-  const output:Record<string,GoogleFinanceRecord>={}
-  for(const {row,ticker} of entries){const price=numberOrNull(row.current_price||row.price),history=(histories.get(ticker)??[]).sort((a,b)=>a.date.localeCompare(b.date)),marketDate=(row.market_date||row.trade_time||history.at(-1)?.date||'').slice(0,10)||null;const marketCap=numberOrNull(row.gf_market_cap),pe=numberOrNull(row.gf_per),eps=numberOrNull(row.gf_eps);output[ticker]={quote:price===null?null:{ticker,price,previousClose:null,changePercent:percentOrNull(row.change_percent||row.change_pct||row.change),marketDate},fundamentals:{ticker,companyName:row.company||null,sector:null,marketCap,pe,eps},historicalPrices:history,high52:numberOrNull(row.high_52w||row['52w_high']||row.high52),low52:numberOrNull(row.low_52w||row['52w_low']||row.low52),status:row.status||null,updatedAt:row.updated_at||row.trade_time||null}}
-  return output
+export async function loadGoogleFinanceWorkbook(config:SheetConfig):Promise<GoogleFinanceWorkbook>{
+  const core=await batchRanges(config,['STOCKS!A1:Z1000','GROUPS!A1:Z200','GROUP_MEMBERSHIP!A1:Z2000',config.masterRange||'STOCK_MASTER!A1:Z1000'])
+  const stockRows=table(core[0]?.values),groupRows=table(core[1]?.values),membershipRows=table(core[2]?.values),masterRows=table(core[3]?.values)
+  const stocks=stockRows.filter(row=>tickerOf(row)&&active(row.active)).map((row,index)=>({ticker:tickerOf(row),company:row.company||row.company_name||tickerOf(row),sector:row.sector||null,active:true,sortOrder:order(row.sort_order,index+1)})).sort((a,b)=>a.sortOrder-b.sortOrder)
+  const activeTickers=new Set(stocks.map(stock=>stock.ticker))
+  const memberships=membershipRows.filter(row=>active(row.active)&&activeTickers.has(tickerOf(row)))
+  const groups=groupRows.filter(row=>active(row.active)).map((row,index)=>{const id=(row.group_id||row.id||row.group||`group-${index+1}`).trim();return{id,name:row.group_name||row.name||row.label||id,sortOrder:order(row.sort_order,index+1),tickers:memberships.filter(member=>(member.group_id||member.group||member.group_name)===id||(member.group_name&&member.group_name===(row.group_name||row.name))).sort((a,b)=>order(a.sort_order,0)-order(b.sort_order,0)).map(tickerOf)}}).filter(group=>group.tickers.length).sort((a,b)=>a.sortOrder-b.sortOrder)
+  const masterByTicker=new Map(masterRows.map(row=>[tickerOf(row),row]))
+  const historyRanges=stocks.map(stock=>{const source=stockRows.find(row=>tickerOf(row)===stock.ticker);const name=source?.history_sheet||`H_${stock.ticker.replace(/[^A-Z0-9]/g,'_')}`;return`${name}!A1:B1200`})
+  const historyResults=await batchRanges(config,historyRanges)
+  const records:Record<string,GoogleFinanceRecord>={}
+  stocks.forEach((stock,index)=>{const row=masterByTicker.get(stock.ticker)??{};const historicalPrices=historyFromValues(historyResults[index]?.values);const price=numberOrNull(row.current_price||row.price),marketDate=(row.market_date||row.trade_time||historicalPrices.at(-1)?.date||'').slice(0,10)||null;records[stock.ticker]={quote:price===null?null:{ticker:stock.ticker,price,previousClose:numberOrNull(row.previous_close),changePercent:percentOrNull(row.change_percent||row.change_pct||row.change),marketDate},fundamentals:{ticker:stock.ticker,companyName:stock.company,sector:stock.sector,marketCap:numberOrNull(row.gf_market_cap||row.market_cap),pe:numberOrNull(row.gf_per||row.per||row.pe),eps:numberOrNull(row.gf_eps||row.eps)},historicalPrices,high52:numberOrNull(row.high_52w||row['52w_high']||row.high52),low52:numberOrNull(row.low_52w||row['52w_low']||row.low52),status:row.status||null,updatedAt:row.updated_at||row.trade_time||null}})
+  const marketOverview=(Object.keys(marketAliases) as MarketOverviewItem['key'][]).map(key=>{const row=masterRows.find(candidate=>marketAliases[key].includes(tickerOf(candidate)));const value=numberOrNull(row?.current_price||row?.price||row?.current_value);const rawChange=percentOrNull(row?.change_percent||row?.change_pct||row?.change);return{key,label:labels[key],value,change:key==='us10y'&&rawChange!==null?rawChange*10000:rawChange,changeUnit:key==='us10y'?'bp' as const:'percent' as const,source:'googlefinance' as const}})
+  return{records,catalog:{stocks,groups},marketOverview}
 }
+
+export async function loadGoogleFinanceSheet(config:SheetConfig):Promise<Record<string,GoogleFinanceRecord>>{return(await loadGoogleFinanceWorkbook(config)).records}

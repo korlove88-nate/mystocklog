@@ -66,9 +66,9 @@ export class CombinedStockDataProvider implements StockDataProvider {
 
 type DashboardPayload={payloads?:Record<string,import('./marketDataProvider').MarketDataPayload>;catalog?:MarketCatalog;marketOverview?:MarketOverviewItem[]}
 class DashboardStockDataProvider implements StockDataProvider{
-  constructor(private readonly forceRefresh=false){}
+  constructor(private readonly forceRefresh=false,private readonly useFmp=false){}
   async getStocks():Promise<StockDataResult>{
-    const result=await fetch('/api/market-data?dashboard=1',{signal:AbortSignal.timeout(90_000),headers:this.forceRefresh?{'x-refresh-market-data':'1'}:{}})
+    const result=await fetch('/api/market-data?dashboard=1',{signal:AbortSignal.timeout(90_000),headers:{...(this.forceRefresh?{'x-refresh-market-data':'1'}:{}),...(this.useFmp?{'x-use-fmp':'1'}:{})}})
     if(!result.ok)throw new Error(`Dashboard data request failed: ${result.status}`)
     const body=await result.json() as DashboardPayload,catalog=body.catalog?.stocks.length&&body.catalog.groups.length?body.catalog:defaultCatalog,payloads=body.payloads??{},currentYear=new Date().getUTCFullYear(),validation:ValidationRow[]=[]
     let latestMarketDate:string|null=null,latestUpdatedAt:string|null=null,liveCount=0
@@ -87,4 +87,4 @@ class DashboardStockDataProvider implements StockDataProvider{
 }
 const blankStock=(ticker:string,company:string,sector:string|null):StockSnapshot=>({ticker,company,sector,marketCap:null,pe:null,eps:null,price:null,changePercent:null,ath:null,high52:null,drawdown52:null,low52:null,atl:null,mdd:{},yearOpen:null,ytdReturn:null,return1m:null,return3m:null,return6m:null,return1y:null,return3y:null,return5y:null,ma20:null,ma60:null,ma120:null,ma200:null,historyComplete:false,priceHistory:[],dataSource:'reference'})
 
-export const createStockDataProvider=(forceRefresh=false):StockDataProvider=>new DashboardStockDataProvider(forceRefresh)
+export const createStockDataProvider=(forceRefresh=false,useFmp=false):StockDataProvider=>new DashboardStockDataProvider(forceRefresh,useFmp)

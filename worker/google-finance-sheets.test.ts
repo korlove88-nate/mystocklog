@@ -67,6 +67,7 @@ describe('GoogleFinance Bridge V2.1',()=>{
     expect(items.find(item=>item.key==='sp500')?.value).toBeNull()
     expect(items.find(item=>item.key==='us10y')?.value).toBe(4.48)
     expect(items.find(item=>item.key==='us10y')?.change).toBeCloseTo(6)
-    expect(items).toHaveLength(5)
+    expect(items.find(item=>item.key==='usdkrw')).toMatchObject({value:1382.55,change:-0.002})
+    expect(items).toHaveLength(6)
   })
 })

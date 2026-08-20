@@ -16,8 +16,8 @@ const endpoint=(config:SheetConfig,path:string)=>`https://sheets.googleapis.com/
 async function batchRanges(config:SheetConfig,ranges:string[]){const query=ranges.map(range=>`ranges=${encodeURIComponent(range)}`).join('&');const result=await fetch(endpoint(config,`values:batchGet?majorDimension=ROWS&${query}`),{signal:AbortSignal.timeout(20_000)});if(!result.ok)throw new Error(`Google Sheets ${result.status}`);const body=await result.json() as {valueRanges?:Array<{values?:unknown}>};return body.valueRanges??[]}
 async function safeRange(config:SheetConfig,range:string):Promise<unknown>{try{return(await batchRanges(config,[range]))[0]?.values}catch{return undefined}}
 const tickerOf=(row:SheetRow)=>(row.ticker||row.app_ticker||row.symbol||row.googlefinance_symbol||row.gf_symbol||'').trim().toUpperCase()
-const marketAliases:Record<MarketOverviewItem['key'],string[]>={sp500:['SP500','S&P500','S_P500','.INX','^GSPC','INDEXSP:.INX'],nasdaq:['NASDAQ','.IXIC','^IXIC','INDEXNASDAQ:.IXIC'],dow:['DOW','DJI','.DJI','^DJI','INDEXDJX:.DJI'],vix:['VIX','^VIX','CBOE:VIX','INDEXCBOE:VIX'],us10y:['US10Y','TNX','^TNX','INDEXCBOE:TNX']}
-const labels:Record<MarketOverviewItem['key'],string>={sp500:'S&P500',nasdaq:'NASDAQ',dow:'DOW',vix:'VIX',us10y:'US10Y'}
+const marketAliases:Record<MarketOverviewItem['key'],string[]>={sp500:['SP500','S&P500','S_P500','.INX','^GSPC','INDEXSP:.INX'],nasdaq:['NASDAQ','.IXIC','^IXIC','INDEXNASDAQ:.IXIC'],dow:['DOW','DJI','.DJI','^DJI','INDEXDJX:.DJI'],vix:['VIX','^VIX','CBOE:VIX','INDEXCBOE:VIX'],us10y:['US10Y','TNX','^TNX','INDEXCBOE:TNX'],usdkrw:['USDKRW','USD/KRW','CURRENCY:USDKRW','KRW']}
+const labels:Record<MarketOverviewItem['key'],string>={sp500:'S&P500',nasdaq:'NASDAQ',dow:'DOW',vix:'VIX',us10y:'US10Y',usdkrw:'환율'}
 const marketKey=(row:SheetRow)=>(row.key||row.market_key||row.ticker||row.item||row.index||row.name||row.label||row.symbol||'').trim().toUpperCase()
 export function marketOverviewFromValues(values:unknown):MarketOverviewItem[]{
   const rows=table(values,['key','market_key','ticker','item','index','name','label','symbol'])

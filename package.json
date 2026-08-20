@@ -1,6 +1,6 @@
 {
   "name": "mystocklog",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -13,7 +13,8 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit --pretty false",
     "test": "vitest run --config vitest.config.ts",
-    "sync:toss": "node --env-file=.env scripts/sync-toss-to-production.mjs"
+    "sync:toss": "node --env-file=.env scripts/sync-toss-to-production.mjs",
+    "refresh:daily": "node --env-file=.env scripts/refresh-and-sync.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

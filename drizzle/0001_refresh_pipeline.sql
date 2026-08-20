@@ -25,12 +25,5 @@ CREATE TABLE IF NOT EXISTS `stock_snapshots` (
   `ma120` real,
   `ma200` real,
   `price_stability` text,
-  `price_source` text NOT NULL DEFAULT 'TOSS',
-  `eps_source` text NOT NULL DEFAULT 'GOOGLE_FINANCE',
-  `per_source` text NOT NULL DEFAULT 'GOOGLE_FINANCE',
-  `market_cap_source` text NOT NULL DEFAULT 'GOOGLE_FINANCE',
-  `mdd_source` text NOT NULL DEFAULT 'APP_CALCULATED',
-  `ma_source` text NOT NULL DEFAULT 'APP_CALCULATED',
-  `price_stability_source` text NOT NULL DEFAULT 'APP_CALCULATED',
   PRIMARY KEY (`ticker`, `snapshot_date`)
 );

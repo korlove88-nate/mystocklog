@@ -1,4 +1,4 @@
-import type { HistoricalPrice, StockDataSources, StockFundamentals, StockQuote, StorageSource } from '../types'
+import type { FundamentalHistoryPoint, HistoricalPrice, StockDataSources, StockFundamentals, StockQuote, StorageSource } from '../types'
 
 export interface MarketDataProvider {
   getQuote(ticker: string): Promise<StockQuote | null>
@@ -20,6 +20,7 @@ export type MarketDataPayload = {
   providerMetrics?: { high52: number | null; low52: number | null }
   storageSource?: StorageSource
   stale?: boolean
+  fundamentalsHistory?: FundamentalHistoryPoint[]
 }
 
 export class ExternalMarketDataProvider implements MarketDataProvider {

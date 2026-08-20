@@ -54,5 +54,7 @@ export interface StockSnapshot {
   stale?: boolean;
   priceStability?: PriceStability | null;
   sources?: StockDataSources;
+  fundamentalsHistory?: FundamentalHistoryPoint[];
 }
 export type PriceStability = '하락 지속' | '관찰' | '안정 시도' | '안정'
+export type FundamentalHistoryPoint = { snapshotDate:string; eps:MetricValue; per:MetricValue }

@@ -2,7 +2,6 @@ export type SymbolMapping = {
   appTicker: string
   exchange: string | null
   googleFinanceSymbol: string | null
-  fmpSymbol: string | null
 }
 
 export const symbolMaster: Record<string, SymbolMapping> = Object.fromEntries([
@@ -12,7 +11,7 @@ export const symbolMaster: Record<string, SymbolMapping> = Object.fromEntries([
   ['MSFT','NASDAQ','NASDAQ:MSFT','MSFT'],
   ['AMZN','NASDAQ','NASDAQ:AMZN','AMZN'],
   ['AVGO','NASDAQ','NASDAQ:AVGO','AVGO'],
-  // SpaceX is privately held. GoogleFinance and FMP do not expose it as a listed security.
+  // SpaceX is privately held, so no listed-market price is synthesized.
   ['SPCX',null,null,null],
   ['META','NASDAQ','NASDAQ:META','META'],
   ['TSLA','NASDAQ','NASDAQ:TSLA','TSLA'],
@@ -39,4 +38,4 @@ export const symbolMaster: Record<string, SymbolMapping> = Object.fromEntries([
   ['PLTR','NASDAQ','NASDAQ:PLTR','PLTR'],
   ['AFRM','NASDAQ','NASDAQ:AFRM','AFRM'],
   ['O','NYSE','NYSE:O','O'],
-].map(([appTicker,exchange,googleFinanceSymbol,fmpSymbol]) => [appTicker,{appTicker,exchange,googleFinanceSymbol,fmpSymbol}]))
+].map(([appTicker,exchange,googleFinanceSymbol]) => [appTicker,{appTicker,exchange,googleFinanceSymbol}]))

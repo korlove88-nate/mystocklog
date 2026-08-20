@@ -1,5 +1,4 @@
 import type { MarketCatalog, MarketOverviewItem, StockSnapshot } from '../types'
-import { referenceSnapshot } from './referenceSnapshot'
 
 const stock = (ticker:string,company:string,sector:string|null,sortOrder:number) => ({ticker,company,sector,active:true,sortOrder})
 
@@ -27,4 +26,4 @@ export const emptyMarketOverview:MarketOverviewItem[]=[
   {key:'us10y',label:'US10Y',value:null,change:null,changeUnit:'bp',source:'stored'},
 ]
 
-export const defaultStockSnapshots:StockSnapshot[]=defaultCatalog.stocks.map(master=>referenceSnapshot.find(stock=>stock.ticker===master.ticker)??({ticker:master.ticker,company:master.company,sector:master.sector,marketCap:null,pe:null,eps:null,price:null,changePercent:null,ath:null,high52:null,drawdown52:null,low52:null,atl:null,mdd:{},yearOpen:null,ytdReturn:null,return1m:null,return3m:null,return6m:null,return1y:null,return3y:null,return5y:null,ma20:null,ma60:null,ma120:null,ma200:null,historyComplete:false,priceHistory:[],dataSource:'reference'}))
+export const defaultStockSnapshots:StockSnapshot[]=defaultCatalog.stocks.map(master=>({ticker:master.ticker,company:master.company,sector:master.sector,marketCap:null,pe:null,eps:null,price:null,changePercent:null,ath:null,high52:null,drawdown52:null,low52:null,atl:null,mdd:{},yearOpen:null,ytdReturn:null,return1m:null,return3m:null,return6m:null,return1y:null,return3y:null,return5y:null,ma20:null,ma60:null,ma120:null,ma200:null,historyComplete:false,priceHistory:[],dataSource:'reference'}))

@@ -25,6 +25,13 @@ create table if not exists public.stock_snapshots (
   ma120 numeric,
   ma200 numeric,
   price_stability text check (price_stability in ('하락 지속','관찰','안정 시도','안정')),
+  price_source text not null default 'TOSS',
+  eps_source text not null default 'GOOGLE_FINANCE',
+  per_source text not null default 'GOOGLE_FINANCE',
+  market_cap_source text not null default 'GOOGLE_FINANCE',
+  mdd_source text not null default 'APP_CALCULATED',
+  ma_source text not null default 'APP_CALCULATED',
+  price_stability_source text not null default 'APP_CALCULATED',
   primary key (ticker, snapshot_date)
 );
 

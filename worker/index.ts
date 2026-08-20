@@ -14,6 +14,7 @@ interface Env {
   GOOGLE_SHEETS_MARKET_RANGE?: string;
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  MARKET_SYNC_TOKEN?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {

@@ -12,6 +12,8 @@ export type RefreshSource = { configured:boolean; attempted:boolean; status:'ok'
 export type RefreshReport = { status:'success'|'partial'|'failed'; trigger:'manual'|'scheduled'; startedAt:string; completedAt:string; marketDate:string|null; sources:{toss:RefreshSource;google:RefreshSource;supabase:RefreshSource}; marketOverview:Record<MarketOverviewItem['key'],'ok'|'failed'> }
 type DashboardMeta = { catalog:MarketCatalog; marketOverview:MarketOverviewItem[]; updatedAt:string|null; refreshCycle:string|null; lastRefresh?:RefreshReport|null }
 export type MarketBindings = { TOSS_CLIENT_ID?:string; TOSS_CLIENT_SECRET?:string; GOOGLE_SHEETS_ID?:string; GOOGLE_SHEETS_API_KEY?:string; GOOGLE_SHEETS_MASTER_RANGE?:string; GOOGLE_SHEETS_MARKET_RANGE?:string; SUPABASE_URL?:string; SUPABASE_SERVICE_ROLE_KEY?:string }
+type SyncBindings = MarketBindings & { MARKET_SYNC_TOKEN?:string }
+type TossSyncItem = { quote:StockQuote; historicalPrices:HistoricalPrice[] }
 
 const validSymbol=(value:string)=>/^[A-Z][A-Z0-9.-]{0,9}$/.test(value)
 const refreshCycle=(now=new Date())=>{const kst=new Date(now.getTime()+9*60*60*1000);if(kst.getUTCHours()<6||(kst.getUTCHours()===6&&kst.getUTCMinutes()<40))kst.setUTCDate(kst.getUTCDate()-1);return kst.toISOString().slice(0,10)}
@@ -21,6 +23,27 @@ const supabaseConfigured=(bindings:MarketBindings)=>Boolean(bindings.SUPABASE_UR
 const googleConfigured=(bindings:MarketBindings)=>Boolean(bindings.GOOGLE_SHEETS_ID&&bindings.GOOGLE_SHEETS_API_KEY)
 const storedSource=(value:StockDataSources[keyof StockDataSources]|undefined,fallback:StockDataSources[keyof StockDataSources]):StockDataSources[keyof StockDataSources]=>value&&String(value)!=='stored'?value:fallback
 const storedView=(payload:StoredPayload)=>{const marketDate=payload.quote?.marketDate??payload.historicalPrices.at(-1)?.date??null;return{...payload,storageSource:'d1' as const,stale:isStoredPriceStale(marketDate),sources:{price:'toss' as const,history:'toss' as const,high52:'app_calculated' as const,low52:'app_calculated' as const,mdd:'app_calculated' as const,ma:'app_calculated' as const,priceStability:'app_calculated' as const,marketCap:storedSource(payload.sources?.marketCap,'googlefinance'),pe:storedSource(payload.sources?.pe,'googlefinance'),eps:storedSource(payload.sources?.eps,'googlefinance'),sector:storedSource(payload.sources?.sector,'reference'),company:storedSource(payload.sources?.company,'reference')}}}
+
+const finite=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)
+export function verifiedTossSyncItem(symbol:string,value:unknown):TossSyncItem|null{
+  if(!value||typeof value!=='object')return null
+  const candidate=value as Partial<TossSyncItem>,quote=candidate.quote
+  if(!quote||quote.ticker!==symbol||!finite(quote.price)||!/^\d{4}-\d{2}-\d{2}$/.test(quote.marketDate??''))return null
+  const prices=(Array.isArray(candidate.historicalPrices)?candidate.historicalPrices:[]).filter(point=>point&&/^\d{4}-\d{2}-\d{2}$/.test(point.date)&&[point.open,point.high,point.low,point.close,point.volume].every(finite)&&point.low!>0&&point.low!<=point.high!&&point.open!>=point.low!&&point.open!<=point.high!&&point.close>=point.low!&&point.close<=point.high!).sort((a,b)=>a.date.localeCompare(b.date)).slice(-1000)
+  if(!prices.length||prices.at(-1)!.date!==quote.marketDate)return null
+  return{quote:{...quote,previousClose:prices.at(-2)?.close??null,changePercent:prices.at(-2)?.close?quote.price!/prices.at(-2)!.close-1:null},historicalPrices:prices}
+}
+
+const authorizedSync=async(request:Request,token:string|undefined)=>{const supplied=request.headers.get('authorization')?.replace(/^Bearer\s+/i,'')??'',bytes=new TextEncoder();if(!token||!supplied)return false;const [a,b]=await Promise.all([crypto.subtle.digest('SHA-256',bytes.encode(token)),crypto.subtle.digest('SHA-256',bytes.encode(supplied))]);return Array.from(new Uint8Array(a)).every((value,index)=>value===new Uint8Array(b)[index])}
+
+async function importTossSync(request:Request,db:D1Database,bindings:SyncBindings){
+  if(!(await authorizedSync(request,bindings.MARKET_SYNC_TOKEN)))return response({error:'Unauthorized'},'SYNC-DENIED',401)
+  let body:{payloads?:Record<string,unknown>};try{body=await request.json() as {payloads?:Record<string,unknown>}}catch{return response({error:'Invalid JSON'},'SYNC-INVALID',400)}
+  const entries=Object.entries(body.payloads??{});if(!entries.length||entries.length>100)return response({error:'Invalid payload count'},'SYNC-INVALID',400)
+  let imported=0,rejected=0,latest:string|null=null
+  for(const [rawSymbol,value] of entries){const symbol=rawSymbol.trim().toUpperCase(),fresh=validSymbol(symbol)?verifiedTossSyncItem(symbol,value):null;if(!fresh){rejected+=1;continue}const existing=await loadStored(db,symbol);if(existing.row?.market_date&&existing.row.market_date>fresh.quote.marketDate!){rejected+=1;continue}const payload=refreshedPayload(symbol,existing.payload,undefined,fresh.quote,fresh.historicalPrices);if(!payload){rejected+=1;continue}payload.historicalPrices=fresh.historicalPrices;payload.quote=fresh.quote;payload.sources={...payload.sources!,price:'toss',history:'toss'};payload.storageSource='d1';payload.stale=isStoredPriceStale(fresh.quote.marketDate);await saveStored(db,symbol,payload,fresh.quote.marketDate);await accumulate(db,bindings,symbol,payload);imported+=1;if(!latest||fresh.quote.marketDate!>latest)latest=fresh.quote.marketDate!}
+  return response({status:rejected?'partial':'success',imported,rejected,marketDate:latest},'TOSS-SYNC',imported?200:422)
+}
 
 const snapshotSourceColumns={price_source:"TEXT NOT NULL DEFAULT 'TOSS'",eps_source:"TEXT NOT NULL DEFAULT 'GOOGLE_FINANCE'",per_source:"TEXT NOT NULL DEFAULT 'GOOGLE_FINANCE'",market_cap_source:"TEXT NOT NULL DEFAULT 'GOOGLE_FINANCE'",mdd_source:"TEXT NOT NULL DEFAULT 'APP_CALCULATED'",ma_source:"TEXT NOT NULL DEFAULT 'APP_CALCULATED'",price_stability_source:"TEXT NOT NULL DEFAULT 'APP_CALCULATED'"} as const
 async function ensureSchema(db:D1Database){for(const schema of [marketSnapshotsSchema,...marketDataSchemas])await db.prepare(schema).run();const columns=await db.prepare('PRAGMA table_info(stock_snapshots)').all<{name:string}>(),existing=new Set(columns.results.map(column=>column.name));for(const [name,type] of Object.entries(snapshotSourceColumns))if(!existing.has(name))await db.prepare(`ALTER TABLE stock_snapshots ADD COLUMN ${name} ${type}`).run();await db.prepare("UPDATE daily_prices SET source='TOSS' WHERE source='toss'").run()}
@@ -75,8 +98,9 @@ export async function refreshDashboard(db:D1Database,bindings:MarketBindings,tri
 
 export async function handleScheduledRefresh(db:D1Database,bindings:MarketBindings){return refreshDashboard(db,bindings,'scheduled',false)}
 
-export async function handleMarketData(request:Request,db:D1Database,bindings:MarketBindings={}):Promise<Response>{
+export async function handleMarketData(request:Request,db:D1Database,bindings:SyncBindings={}):Promise<Response>{
   const url=new URL(request.url);await ensureSchema(db)
+  if(request.method==='POST'&&url.searchParams.get('sync')==='1')return importTossSync(request,db,bindings)
   if(url.searchParams.get('status')==='1'){const meta=await loadDashboardMeta(db);return Response.json({tossConfigured:Boolean(tossCredentials(bindings)),googleSheetsConfigured:googleConfigured(bindings),supabaseConfigured:supabaseConfigured(bindings),durableStorage:true,lastRefresh:meta.lastRefresh??null,marketOverview:overviewStatus(meta.marketOverview)})}
   if(url.searchParams.get('dashboard')==='1'){
     const force=request.headers.get('x-refresh-market-data')==='1';if(force){const refreshed=await refreshDashboard(db,bindings,'manual',true);return response(refreshed,refreshed.refresh.status==='success'?'DASHBOARD-REFRESH':'DASHBOARD-PARTIAL',refreshed.refresh.status==='failed'?502:200)}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { HistoricalPrice } from '../types'
-import { calculateAnnualMdd, calculateDrawdown, calculateMddProximity, calculateMetrics, calculateMovingAverage, calculateMovingAverageSeries } from './metricsCalculator'
+import { calculateAnnualMdd, calculateDrawdown, calculateMddProximity, calculateMetrics, calculateMovingAverage, calculateMovingAverageSeries, calculatePriceStability } from './metricsCalculator'
 
 const series = (values: number[], start = '2026-01-02'): HistoricalPrice[] => {
   const startDate = new Date(`${start}T00:00:00Z`)
@@ -52,5 +52,12 @@ describe('metricsCalculator', () => {
     expect(calculateMddProximity(-.25,[-.2,-.25,-.3])?.level).toBe('mdd')
     expect(calculateMddProximity(-.1,[-.2,-.25,-.3])?.level).toBe('normal')
     expect(calculateMddProximity(-.18,[-.2,null,-.3])).toBeNull()
+  })
+
+  it('classifies price stability using recent lows, MA20 and MA60 only',()=>{
+    const falling=series([...Array.from({length:20},(_,index)=>120-index),...Array.from({length:5},(_,index)=>95-index)])
+    expect(calculatePriceStability(falling,100,110)).toBe('하락 지속')
+    expect(calculatePriceStability(series(Array.from({length:25},()=>120)),110,100)).toBe('안정')
+    expect(calculatePriceStability(series(Array.from({length:25},()=>105)),100,110)).toBe('안정 시도')
   })
 })

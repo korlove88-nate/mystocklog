@@ -9,45 +9,56 @@ describe('Google Sheets date normalization',()=>{
 })
 
 describe('GoogleFinance Bridge V2.1',()=>{
-  it('uses STOCK_MASTER History Sheet and reads MARKET_OVERVIEW independently',async()=>{
+  it('reads only current fundamentals and market overview',async()=>{
+    const result=(values:unknown)=>({ok:true,json:async()=>({valueRanges:[{values}]})})
     const fetchMock=vi.fn()
-      .mockResolvedValueOnce({ok:true,json:async()=>({valueRanges:[
-        {values:[['Ticker','Company','Sector','Active','Sort Order'],['BRK-B','Berkshire Hathaway','Financials','Y','1'],['OLD','Old','Technology','N','2']]},
-        {values:[['Group ID','Group Name','Active','Sort Order'],['top','시총 TOP10','Y','1'],['semi','반도체','Y','2']]},
-        {values:[['Group ID','Ticker','Active','Sort Order'],['top','BRK-B','Y','1'],['semi','BRK-B','Y','1'],['top','OLD','Y','2']]},
-        {values:[['Ticker','Current Price','Change Percent','52W High','52W Low','History Sheet'],['BRK-B','500','1.5%','520','400','H_BRKB']]},
-      ]})})
-      .mockResolvedValueOnce({ok:true,json:async()=>({valueRanges:[{values:[['Date','Close'],['2026-08-13','498'],['2026-08-14','500']]}]})})
-      .mockResolvedValueOnce({ok:true,json:async()=>({valueRanges:[{values:[['Key','Display Value','Change Percent','Change BP'],['S&P500','7400','0.4%',''],['US10Y','4.48','','3']]}]})})
+      .mockResolvedValueOnce(result([['Ticker','Company','Sector','Active','Sort Order'],['BRK-B','Berkshire Hathaway','Financials','Y','1'],['OLD','Old','Technology','N','2']]))
+      .mockResolvedValueOnce(result([['Group ID','Group Name','Active','Sort Order'],['top','시총 TOP10','Y','1'],['semi','반도체','Y','2']]))
+      .mockResolvedValueOnce(result([['Group ID','Ticker','Active','Sort Order'],['top','BRK-B','Y','1'],['semi','BRK-B','Y','1'],['top','OLD','Y','2']]))
+      .mockResolvedValueOnce(result([['Ticker','GF Market Cap','GF PER','GF EPS'],['BRK-B','900B','12.5','40']]))
+      .mockResolvedValueOnce(result([['Key','Display Value','Change Percent','Change BP'],['S&P500','7400','0.4%',''],['US10Y','4.48','','3']]))
     vi.stubGlobal('fetch',fetchMock)
     const workbook=await loadGoogleFinanceWorkbook({spreadsheetId:'sheet',apiKey:'key',masterRange:'STOCK_MASTER!A1:Z1000',historyRange:'PER_TICKER'})
-    expect(fetchMock).toHaveBeenCalledTimes(3)
-    expect(String(fetchMock.mock.calls[1][0])).toContain('H_BRKB')
-    expect(String(fetchMock.mock.calls[1][0])).not.toContain('H_BRK_B')
+    expect(fetchMock).toHaveBeenCalledTimes(5)
     expect(workbook.catalog.stocks.map(stock=>stock.ticker)).toEqual(['BRK-B'])
     expect(workbook.catalog.groups.map(group=>group.tickers)).toEqual([['BRK-B'],['BRK-B']])
-    expect(workbook.records['BRK-B'].historicalPrices).toHaveLength(2)
-    expect(workbook.records['BRK-B'].quote?.changePercent).toBe(.015)
+    expect(workbook.records['BRK-B'].historicalPrices).toHaveLength(0)
+    expect(workbook.records['BRK-B'].quote).toBeNull()
+    expect(workbook.records['BRK-B'].fundamentals).toMatchObject({marketCap:900e9,pe:12.5,eps:40})
     expect(workbook.marketOverview[0].value).toBe(7400)
     expect(workbook.marketOverview[4]).toMatchObject({value:4.48,change:3,changeUnit:'bp'})
   })
 
-  it('isolates a missing history sheet instead of failing all symbols',async()=>{
+  it('does not request GoogleFinance price history',async()=>{
+    const result=(values:unknown)=>({ok:true,json:async()=>({valueRanges:[{values}]})})
     const fetchMock=vi.fn()
-      .mockResolvedValueOnce({ok:true,json:async()=>({valueRanges:[
-        {values:[['Ticker','Company','Active'],['NVDA','NVIDIA','Y'],['MU','Micron','Y']]},
-        {values:[['Group','Active'],['반도체','Y']]},
-        {values:[['Group','Ticker','Active'],['반도체','NVDA','Y'],['반도체','MU','Y']]},
-        {values:[['Ticker','Price','History Sheet'],['NVDA','200','H_NVDA'],['MU','150','H_MISSING']]},
-      ]})})
-      .mockResolvedValueOnce({ok:false,status:400,json:async()=>({})})
-      .mockResolvedValueOnce({ok:true,json:async()=>({valueRanges:[{values:[['Date','Close'],['2026-08-14','200']]}]})})
-      .mockResolvedValueOnce({ok:false,status:400,json:async()=>({})})
-      .mockResolvedValueOnce({ok:true,json:async()=>({valueRanges:[]})})
+      .mockResolvedValueOnce(result([['Ticker','Company','Active'],['NVDA','NVIDIA','Y'],['MU','Micron','Y']]))
+      .mockResolvedValueOnce(result([['Group','Active'],['반도체','Y']]))
+      .mockResolvedValueOnce(result([['Group','Ticker','Active'],['반도체','NVDA','Y'],['반도체','MU','Y']]))
+      .mockResolvedValueOnce(result([['Ticker','Price','History Sheet'],['NVDA','200','H_NVDA'],['MU','150','H_MISSING']]))
+      .mockResolvedValueOnce(result([]))
     vi.stubGlobal('fetch',fetchMock)
     const workbook=await loadGoogleFinanceWorkbook({spreadsheetId:'sheet',apiKey:'key',masterRange:'STOCK_MASTER!A1:Z1000',historyRange:'PER_TICKER'})
-    expect(workbook.records.NVDA.historicalPrices).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledTimes(5)
+    expect(workbook.records.NVDA.historicalPrices).toHaveLength(0)
     expect(workbook.records.MU.historicalPrices).toHaveLength(0)
+  })
+
+  it('keeps market indicators when another sheet range fails',async()=>{
+    const result=(values:unknown)=>({ok:true,json:async()=>({valueRanges:[{values}]})})
+    const failed={ok:false,status:403,json:async()=>({})}
+    const fetchMock=vi.fn()
+      .mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(result([]))
+      .mockResolvedValueOnce(result([]))
+      .mockResolvedValueOnce(result([]))
+      .mockResolvedValueOnce(result([[],['Key','Display Value','Change Percent'],['NASDAQ','26200','0.6%'],['VIX','15.2','-2%']]))
+    vi.stubGlobal('fetch',fetchMock)
+    const workbook=await loadGoogleFinanceWorkbook({spreadsheetId:'sheet',apiKey:'key',masterRange:'STOCK_MASTER!A1:Z1000',historyRange:''})
+    expect(workbook.catalog.stocks).toHaveLength(0)
+    expect(workbook.marketOverview.find(item=>item.key==='nasdaq')).toMatchObject({value:26200,change:0.006})
+    expect(workbook.marketOverview.find(item=>item.key==='vix')?.value).toBe(15.2)
+    expect(workbook.marketOverview.find(item=>item.key==='sp500')?.value).toBeNull()
   })
 
   it('keeps missing market items null and uses US10Y Display Value directly',()=>{
@@ -56,6 +67,6 @@ describe('GoogleFinance Bridge V2.1',()=>{
     expect(items.find(item=>item.key==='sp500')?.value).toBeNull()
     expect(items.find(item=>item.key==='us10y')?.value).toBe(4.48)
     expect(items.find(item=>item.key==='us10y')?.change).toBeCloseTo(6)
-    expect(items.find(item=>item.key==='usdkrw')).toMatchObject({value:1382.55,change:-.002})
+    expect(items).toHaveLength(5)
   })
 })

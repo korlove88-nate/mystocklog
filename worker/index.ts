@@ -1,16 +1,19 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
-import { handleMarketData } from "./market-data";
+import { handleMarketData, handleScheduledRefresh } from "./market-data";
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
-  FMP_API_KEY?: string;
+  TOSS_CLIENT_ID?: string;
+  TOSS_CLIENT_SECRET?: string;
   GOOGLE_SHEETS_ID?: string;
   GOOGLE_SHEETS_API_KEY?: string;
   GOOGLE_SHEETS_MASTER_RANGE?: string;
-  GOOGLE_SHEETS_HISTORY_RANGE?: string;
+  GOOGLE_SHEETS_MARKET_RANGE?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -51,6 +54,9 @@ const worker = {
     }
 
     return handler.fetch(request, env, ctx);
+  },
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(handleScheduledRefresh(env.DB, env));
   },
 };
 

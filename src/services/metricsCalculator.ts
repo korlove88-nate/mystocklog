@@ -1,4 +1,4 @@
-import type { HistoricalPrice, MetricValue } from '../types'
+import type { HistoricalPrice, MetricValue, PriceStability } from '../types'
 
 const valid = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 const dateValue = (date: string) => Date.parse(`${date}T00:00:00Z`)
@@ -121,4 +121,18 @@ export function calculateMetrics(prices: HistoricalPrice[], currentPrice: Metric
     ma20: calculateMovingAverage(points, 20), ma60: calculateMovingAverage(points, 60),
     ma120: calculateMovingAverage(points, 120), ma200: calculateMovingAverage(points, 200),
   }
+}
+
+export function calculatePriceStability(prices: HistoricalPrice[], ma20: MetricValue, ma60: MetricValue): PriceStability | null {
+  const points = normalizeHistoricalPrices(prices)
+  if (points.length < 21 || !valid(ma20) || !valid(ma60)) return null
+  const latest = points.at(-1)!
+  const latestPrice = analyticalPrice(latest)
+  const recentLow = Math.min(...points.slice(-5).map(point => point.low ?? analyticalPrice(point)))
+  const priorLows = points.slice(-25, -5).map(point => point.low ?? analyticalPrice(point))
+  const renewedLow = priorLows.length > 0 && recentLow <= Math.min(...priorLows)
+  if (renewedLow && latestPrice < ma20 && ma20 < ma60) return '하락 지속'
+  if (latestPrice >= ma20 && ma20 >= ma60) return '안정'
+  if (latestPrice >= ma20 && ma20 < ma60) return '안정 시도'
+  return '관찰'
 }

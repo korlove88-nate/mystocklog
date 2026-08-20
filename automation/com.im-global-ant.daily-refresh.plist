@@ -4,6 +4,7 @@
   <key>Label</key><string>com.im-global-ant.daily-refresh</string>
   <key>ProgramArguments</key><array><string>/usr/local/bin/npm</string><string>run</string><string>refresh:daily</string></array>
   <key>WorkingDirectory</key><string>/Users/hoyoul/Documents/미국 증시 브리핑/im-global-ant-dashboard</string>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string><key>HOME</key><string>/Users/hoyoul</string></dict>
   <key>StartCalendarInterval</key><dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>40</integer></dict>
   <key>RunAtLoad</key><false/>
   <key>ProcessType</key><string>Background</string>

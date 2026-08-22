@@ -46,13 +46,14 @@ describe('metricsCalculator', () => {
     expect(result[19].ma60).toBeNull()
   })
 
-  it('classifies MDD proximity from the median of exactly three annual MDD values',()=>{
+  it('classifies MDD proximity from the median of annual MDD values',()=>{
     expect(calculateMddProximity(-.18,[-.2,-.25,-.3])).toEqual({ratio:.72,level:'interest'})
     expect(calculateMddProximity(-.225,[-.2,-.25,-.3])?.level).toBe('near')
     expect(calculateMddProximity(-.25,[-.2,-.25,-.3])?.level).toBe('mdd')
     expect(calculateMddProximity(-.1,[-.2,-.25,-.3])?.level).toBe('normal')
     expect(calculateMddProximity(-.18,[-.2,null,-.3])).toBeNull()
   })
+  it('uses the median of five annual MDD values',()=>{expect(calculateMddProximity(-.2,[-.1,-.15,-.2,-.25,-.3])?.ratio).toBeCloseTo(1)})
 
   it('classifies price stability using recent lows, MA20 and MA60 only',()=>{
     const falling=series([...Array.from({length:20},(_,index)=>120-index),...Array.from({length:5},(_,index)=>95-index)])

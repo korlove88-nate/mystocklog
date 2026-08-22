@@ -64,7 +64,7 @@ const cluster=(reasons:ZoneReason[],price:number,method:PriceZone['method'],tole
   const candidates=reasons.filter(reason=>reason.price>0).sort((a,b)=>a.price-b.price)
   let best:ZoneReason[]=[]
   for(let i=0;i<candidates.length;i++){const group=candidates.filter(item=>Math.abs(item.price-candidates[i].price)/price<=tolerance);if(group.length>best.length)best=group}
-  if(best.length<2)return null
+  if(best.length<2){const eligible=candidates.filter(item=>type==='buy'?item.price<=price*1.15:item.price>=price*.85),nearest=[...(eligible.length?eligible:candidates)].sort((a,b)=>Math.abs(a.price-price)-Math.abs(b.price-price))[0];if(!nearest)return null;const band=Math.max(nearest.price*.005,price*tolerance*.25),low=nearest.price-band,high=nearest.price+band,distance=pctDistance(price,low,high),relation=price>high?`${type==='buy'?'관심':'차익관리'} 구간까지 ${(distance*100).toFixed(1)}%`:price<low?(type==='buy'?'관심 구간을 하향 이탈':`차익관리 구간까지 +${(distance*100).toFixed(1)}%`):(type==='buy'?'현재 매수 관심 구간':'현재 차익관리 구간');return{low,high,status:'신뢰도 낮음 · 단일 기준',distance,relation,reasons:[nearest],method}}
   const low=Math.min(...best.map(item=>item.price)),high=Math.max(...best.map(item=>item.price)),distance=pctDistance(price,low,high)
   const relation=price>high?`${type==='buy'?'관심':'차익관리'} 구간까지 ${(distance*100).toFixed(1)}%`:price<low?(type==='buy'?'관심 구간을 하향 이탈':`차익관리 구간까지 +${(distance*100).toFixed(1)}%`):(type==='buy'?'현재 매수 관심 구간':'현재 차익관리 구간')
   return{low,high,status:type==='buy'?(best.length>=4?'강한 관심 후보':best.length===3?'2차 관심':'1차 관심'):'저항 중첩',distance,relation,reasons:best,method}
@@ -79,7 +79,7 @@ export function calculatePriceZones(stock:StockSnapshot){
   const buyReasons=[...reason('최근 스윙 저점',swingLow),...reason('52주 저점',stock.low52),...reason('MDD 기준가격',mddPrice),...reason('MA60',stock.ma60),...reason('MA120',stock.ma120),...reason('MA200',stock.ma200)]
   const sellReasons=[...reason('최근 스윙 고점',swingHigh),...reason('52주 고점',stock.high52),...reason('ATH',stock.ath),...reason('MA60',valid(stock.ma60)&&stock.ma60>price?stock.ma60:null),...reason('MA120',valid(stock.ma120)&&stock.ma120>price?stock.ma120:null),...reason('MA200',valid(stock.ma200)&&stock.ma200>price?stock.ma200:null)]
   const buyZone=cluster(buyReasons,price,method,tolerance,'buy'),sellZone=cluster(sellReasons,price,method,tolerance,'sell')
-  if(buyZone&&sellZone&&buyZone.high>=sellZone.low)return{buyZone:null,sellZone:null}
+  if(buyZone&&sellZone&&buyZone.high>=sellZone.low){buyZone.status='판단 제한 · 가격대 중첩';sellZone.status='판단 제한 · 가격대 중첩'}
   return{buyZone,sellZone}
 }
 
@@ -95,7 +95,7 @@ export function buildStockAnalysis(stock:StockSnapshot,peers:StockSnapshot[]):St
   const opportunity=opportunityScore(stock,peers),interpretation=opportunityInterpretation(opportunity.score),trendResult=trendAnalysis(stock.priceHistory,stock.price),volume=volumeStatistics(stock.priceHistory),zones=calculatePriceZones(stock)
   const missing:string[]=[];for(const [key,label] of [['ma20','MA20'],['ma60','MA60'],['ma120','MA120'],['ma200','MA200']] as const)if(!valid(trendResult.ma[key].value))missing.push(`${label} 데이터 부족`)
   if(volume.ratio===null)missing.push(`거래량 ${Math.min(stock.priceHistory.filter(point=>valid(point.volume)).length,20)}/20일 수집`)
-  if(stock.return1y===null)missing.push('52주 데이터 부족');if(!valid(stock.eps)||stock.eps<=0)missing.push('EPS가 없거나 0 이하로 PER 가격 분석 제외');if(Object.values(stock.mdd).filter(valid).length<3)missing.push('3년 가격 이력이 부족해 MDD 신뢰도 제한')
+  if(stock.return1y===null)missing.push('52주 데이터 부족');if(!valid(stock.eps)||stock.eps<=0)missing.push('EPS가 없거나 0 이하로 PER 가격 분석 제외');if(Object.values(stock.mdd).filter(valid).length<5)missing.push('5년 가격 이력이 부족해 MDD 신뢰도 제한')
   const measurable=10-missing.length,completeness=Math.max(0,Math.round(measurable/10*100)),priceVolumeState=combinedPriceVolume(volume.priceDirection,volume.ratio,trendResult.trend)
   const trendSummary=`${trendResult.arrangement==='데이터 부족'?'이동평균 데이터 축적 중':`${trendResult.arrangement} · ${trendResult.trend}`}. ${priceVolumeState}`
   let title='가격과 추세 모두 방향을 탐색하고 있습니다.'

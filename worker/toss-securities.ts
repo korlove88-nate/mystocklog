@@ -2,7 +2,7 @@ import type { HistoricalPrice, StockQuote } from '../src/types'
 
 const BASE_URL = 'https://openapi.tossinvest.com'
 const TIMEOUT_MS = 15_000
-const MAX_CANDLE_PAGES = 5
+const MAX_CANDLE_PAGES = 7
 
 export type TossCredentials = { clientId:string; clientSecret:string }
 type Token = { value:string; expiresAt:number }

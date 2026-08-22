@@ -41,9 +41,9 @@ export type MddProximityLevel = 'normal'|'interest'|'near'|'mdd'
 export type MddProximity = { ratio:number; level:MddProximityLevel } | null
 
 export function calculateMddProximity(drawdown52:MetricValue,mddValues:MetricValue[]):MddProximity{
-  if(!valid(drawdown52)||mddValues.length!==3||mddValues.some(value=>!valid(value)))return null
+  if(!valid(drawdown52)||mddValues.length<3||mddValues.length%2===0||mddValues.some(value=>!valid(value)))return null
   const sorted=(mddValues as number[]).map(Math.abs).sort((a,b)=>a-b)
-  const median=sorted[1]
+  const median=sorted[Math.floor(sorted.length/2)]
   if(!valid(median)||median<=0)return null
   const ratio=Math.abs(drawdown52)/median
   return{ratio,level:ratio>=1?'mdd':ratio>=.85?'near':ratio>=.7?'interest':'normal'}
@@ -108,7 +108,7 @@ export function calculateMetrics(prices: HistoricalPrice[], currentPrice: Metric
   const high52 = trailingYear.length ? Math.max(...trailingYear.map(point => point.high ?? point.close)) : null
   const low52 = trailingYear.length ? Math.min(...trailingYear.map(point => point.low ?? point.close)) : null
   const effectiveCurrent = currentPrice ?? points.at(-1)?.close ?? null
-  const years = [currentYear - 2, currentYear - 1, currentYear]
+  const years = [currentYear - 4, currentYear - 3, currentYear - 2, currentYear - 1, currentYear]
   return {
     ath: historyComplete && rawCloses.length ? Math.max(...rawCloses) : null,
     atl: historyComplete && rawCloses.length ? Math.min(...rawCloses) : null,

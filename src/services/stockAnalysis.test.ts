@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest'
 import type {HistoricalPrice,StockSnapshot} from '../types'
-import {buildStockAnalysis,calculatePriceZones,opportunityInterpretation,trendAnalysis,volumeStatistics} from './stockAnalysis'
+import {buildStockAnalysis,calculatePriceZones,explainTrendForUser,opportunityInterpretation,trendAnalysis,volumeStatistics} from './stockAnalysis'
 
 const history=(count=240,start=100,step=.2,volume=1000):HistoricalPrice[]=>Array.from({length:count},(_,index)=>{const close=start+index*step,date=new Date(Date.UTC(2025,0,2+index));return{date:date.toISOString().slice(0,10),open:close-.5,high:close+1,low:close-1,close,adjustedClose:close,volume:index===count-1?volume*1.6:volume}})
 const stock=(prices=history()):StockSnapshot=>{const price=prices.at(-1)?.close??null;return{ticker:'TEST',company:'Test',sector:'Tech',marketCap:null,pe:20,eps:5,price,changePercent:.01,ath:null,high52:price?price*1.1:null,drawdown52:-.09,low52:price?price*.75:null,atl:null,mdd:{2024:-.2,2025:-.25,2026:-.18},yearOpen:100,ytdReturn:.2,return1m:.02,return3m:.05,return6m:.1,return1y:.2,return3y:null,return5y:null,ma20:price?price-2:null,ma60:price?price-4:null,ma120:price?price-8:null,ma200:price?price-12:null,historyComplete:false,priceHistory:prices,dataSource:'toss',priceStability:'안정',fundamentalsHistory:[]}}
@@ -20,4 +20,5 @@ describe('stock technical analysis',()=>{
   it('labels analysis limits when buy and sell zones overlap',()=>{const sample=stock();sample.price=125;sample.low52=123;sample.ma120=125.5;sample.high52=126;sample.ath=127;const zones=calculatePriceZones(sample);expect(zones.buyZone?.status).toContain('판단 제한');expect(zones.sellZone?.status).toContain('판단 제한')})
   it('shows a low-confidence zone from one usable reference',()=>{const sample=stock();sample.price=110;sample.low52=80;sample.ma60=null;sample.ma120=null;sample.ma200=null;sample.mdd={};const zone=calculatePriceZones(sample).buyZone;expect(zone).not.toBeNull();expect(zone?.status).toContain('신뢰도 낮음')})
   it('uses requested opportunity interpretation bands',()=>{expect(opportunityInterpretation(79).label).toBe('관찰 우선');expect(opportunityInterpretation(45).label).toBe('일부 충족');expect(opportunityInterpretation(20).label).toBe('매력 제한')})
+  it('explains mixed weak trends in plain language with a next check',()=>{const result=explainTrendForUser('약세 우세','혼조 배열','관심 감소');expect(result.plainTrendMeaning).toContain('오늘 가격이 올랐더라도');expect(result.arrangementMeaning).toContain('서로 다른 방향');expect(result.nextTrendCheck).toContain('MA20')})
 })

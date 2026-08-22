@@ -13,7 +13,7 @@ export type StockAnalysis={
   asOf:string|null;price:MetricValue;opportunity:ReturnType<typeof opportunityScore>;opportunityLabel:string;opportunityMeaning:string;
   completeness:number;ma:Record<MaKey,{value:MetricValue;difference:MetricValue;direction:MaDirection}>;arrangement:'정배열'|'역배열'|'혼조 배열'|'데이터 부족';trend:TrendState;
   latestVolume:MetricValue;averageVolume20:MetricValue;volumeRatio:MetricValue;volumeState:VolumeState;priceVolumeState:string;trendSummary:string;
-  buyZone:PriceZone|null;sellZone:PriceZone|null;title:string;summary:string;missing:string[];source:string;series:ReturnType<typeof calculateMovingAverageSeries>;
+  buyZone:PriceZone|null;sellZone:PriceZone|null;title:string;summary:string;plainTrendMeaning:string;nextTrendCheck:string;arrangementMeaning:string;volumeMeaning:string;missing:string[];source:string;series:ReturnType<typeof calculateMovingAverageSeries>;
 }
 
 const valid=(value:unknown):value is number=>typeof value==='number'&&Number.isFinite(value)
@@ -91,6 +91,37 @@ function combinedPriceVolume(priceDirection:string|null,ratio:MetricValue,trend:
   return trend.includes('상승')?'상승 구조 안에서 거래량은 뚜렷한 방향을 보이지 않습니다.':'가격과 거래량 모두 방향을 탐색하고 있습니다.'
 }
 
+export function explainTrendForUser(trend:TrendState,arrangement:StockAnalysis['arrangement'],volumeState:VolumeState){
+  const plainTrendMeaning:Record<TrendState,string>={
+    '강한 상승':'현재 가격과 여러 이동평균선이 같은 상승 방향을 가리킵니다. 단기·중장기 흐름이 비교적 고르게 좋아진 상태입니다.',
+    '상승 우세':'중장기 흐름은 유리하지만 일부 단기 이동평균선은 아직 정리되지 않았습니다. 상승 가능성이 더 크지만 확인이 필요한 상태입니다.',
+    '방향 탐색':'상승과 하락 신호가 섞여 있어 어느 방향이 우세한지 아직 분명하지 않습니다.',
+    '약세 우세':'오늘 가격이 올랐더라도 주요 이동평균선의 방향은 아직 아래쪽입니다. 짧은 반등보다 넓은 기간의 하락 흐름이 더 강한 상태입니다.',
+    '강한 하락':'현재 가격이 주요 이동평균선 아래에 있고 평균선도 하락하고 있습니다. 여러 기간에서 약세가 함께 나타난 상태입니다.',
+  }
+  const nextTrendCheck:Record<TrendState,string>={
+    '강한 상승':'급하게 따라가기보다 MA20·MA60 위에서 가격이 유지되는지, 상승할 때 거래량이 함께 늘어나는지 확인하세요.',
+    '상승 우세':'MA20·MA60 지지 여부와 거래량 회복을 확인하세요. 두 조건이 함께 나타나면 상승 흐름의 신뢰도가 높아집니다.',
+    '방향 탐색':'가격이 MA60 또는 MA120 위아래 어느 쪽으로 자리 잡는지 기다리고, 그 움직임에 거래량이 동반되는지 확인하세요.',
+    '약세 우세':'낙폭만 보고 판단하지 말고 MA20 회복, MA60 접근, 하락일 거래량 감소가 순서대로 나타나는지 확인하세요.',
+    '강한 하락':'바닥을 단정하지 말고 저점 갱신이 멈추는지, MA20·MA60을 다시 회복하는지, 하락 거래량이 줄어드는지 확인하세요.',
+  }
+  const arrangementMeaning:Record<StockAnalysis['arrangement'],string>={
+    '정배열':'단기 평균선이 장기 평균선보다 위에 있어 상승 흐름이 순서대로 정돈된 상태',
+    '역배열':'단기 평균선이 장기 평균선보다 아래에 있어 하락 흐름이 여러 기간에 이어진 상태',
+    '혼조 배열':'단기·중기·장기 평균선의 순서가 뒤섞여 서로 다른 방향을 가리키는 상태',
+    '데이터 부족':'이동평균선의 순서를 비교할 만큼 가격 이력이 충분하지 않은 상태',
+  }
+  const volumeMeaning:Record<VolumeState,string>={
+    '거래 집중':'평소보다 거래가 크게 늘었습니다. 가격 방향을 강화할 수 있으므로 발생 원인을 함께 확인해야 합니다.',
+    '참여 증가':'평소보다 많은 참여가 동반됐습니다. 현재 가격 움직임의 힘이 커지는지 확인할 구간입니다.',
+    '평소 수준':'거래량에서 특별히 강하거나 약한 신호가 나타나지 않았습니다.',
+    '관심 감소':'평소보다 거래가 적어 현재 가격 움직임을 뒷받침하는 힘이 약합니다.',
+    '데이터 부족':'직전 20거래일과 비교할 거래량 데이터가 부족합니다.',
+  }
+  return{plainTrendMeaning:plainTrendMeaning[trend],nextTrendCheck:nextTrendCheck[trend],arrangementMeaning:arrangementMeaning[arrangement],volumeMeaning:volumeMeaning[volumeState]}
+}
+
 export function buildStockAnalysis(stock:StockSnapshot,peers:StockSnapshot[]):StockAnalysis{
   const opportunity=opportunityScore(stock,peers),interpretation=opportunityInterpretation(opportunity.score),trendResult=trendAnalysis(stock.priceHistory,stock.price),volume=volumeStatistics(stock.priceHistory),zones=calculatePriceZones(stock)
   const missing:string[]=[];for(const [key,label] of [['ma20','MA20'],['ma60','MA60'],['ma120','MA120'],['ma200','MA200']] as const)if(!valid(trendResult.ma[key].value))missing.push(`${label} 데이터 부족`)
@@ -105,5 +136,6 @@ export function buildStockAnalysis(stock:StockSnapshot,peers:StockSnapshot[]):St
   else if((opportunity.score??0)>=65)title='가격 매력은 높지만 추세 확인이 필요합니다.'
   const zoneSentence=zones.buyZone?`${zones.buyZone.relation}입니다.`:zones.sellZone?`${zones.sellZone.relation}입니다.`:'가격 구간은 추가 데이터 축적이 필요합니다.'
   const summary=`기회점수는 ${opportunity.score??'—'}점으로 ${interpretation.label} 상태이며, ${zoneSentence} 현재 추세는 ${trendResult.trend}, 거래량은 ${volume.state} 상태입니다.`
-  return{asOf:stock.priceHistory.at(-1)?.date??null,price:stock.price,opportunity,opportunityLabel:interpretation.label,opportunityMeaning:interpretation.meaning,completeness,ma:trendResult.ma,arrangement:trendResult.arrangement,trend:trendResult.trend,latestVolume:volume.latest,averageVolume20:volume.average,volumeRatio:volume.ratio,volumeState:volume.state,priceVolumeState,trendSummary,buyZone:zones.buyZone,sellZone:zones.sellZone,title,summary,missing,source:stock.sources?.history==='toss'?'TOSS 정규장 일봉 · 앱 계산':'저장 일봉 · 앱 계산',series:trendResult.series}
+  const plain=explainTrendForUser(trendResult.trend,trendResult.arrangement,volume.state)
+  return{asOf:stock.priceHistory.at(-1)?.date??null,price:stock.price,opportunity,opportunityLabel:interpretation.label,opportunityMeaning:interpretation.meaning,completeness,ma:trendResult.ma,arrangement:trendResult.arrangement,trend:trendResult.trend,latestVolume:volume.latest,averageVolume20:volume.average,volumeRatio:volume.ratio,volumeState:volume.state,priceVolumeState,trendSummary,buyZone:zones.buyZone,sellZone:zones.sellZone,title,summary,...plain,missing,source:stock.sources?.history==='toss'?'TOSS 정규장 일봉 · 앱 계산':'저장 일봉 · 앱 계산',series:trendResult.series}
 }

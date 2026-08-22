@@ -47,7 +47,7 @@ const worker = {
       return handleMarketData(request, env.DB, env);
     }
 
-    if (url.pathname === "/api/alerts" || url.pathname.startsWith("/api/push/")) {
+    if (url.pathname === "/api/alerts" || url.pathname === "/api/strategy-notes" || url.pathname.startsWith("/api/push/")) {
       return handleAlertApi(request, env.DB, env);
     }
 

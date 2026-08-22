@@ -64,6 +64,30 @@ async function initSettings(db:D1Database,ownerId:string,stocks:{ticker:string;c
 export async function handleAlertApi(request:Request,db:D1Database,env:AlertBindings){await ensureAlertSchema(db);const url=new URL(request.url),path=url.pathname
   if(path==='/api/push/config'&&request.method==='GET')return json({publicKey:env.VAPID_PUBLIC_KEY??null,configured:Boolean(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY&&env.VAPID_SUBJECT)})
   const identity=await owner(request,env);if(!identity)return json({error:'MyStockLog 사이트 로그인 세션을 확인해 주세요.'},401);const ownerId=identity.id
+  if(path==='/api/strategy-notes'){
+    const selectNotes=async()=>await db.prepare('SELECT id,ticker,content,tag,created_at AS createdAt,updated_at AS updatedAt FROM strategy_notes_d1 WHERE owner_id=?1 ORDER BY updated_at DESC').bind(ownerId).all()
+    if(request.method==='GET')return json({notes:(await selectNotes()).results})
+    if(request.method!=='POST')return json({error:'Method not allowed'},405)
+    const body=await request.json() as {action?:string;id?:string;ticker?:string;content?:string;tag?:string;notes?:Array<{id?:string;ticker?:string;content?:string;tag?:string;createdAt?:string;updatedAt?:string}>}
+    const tags=new Set(['가격','실적','이슈','리스크','전략']),content=body.content?.trim(),tag=body.tag&&tags.has(body.tag)?body.tag:null
+    if(body.action==='create'){
+      if(!body.ticker||!content||!tag)return json({error:'티커, 내용, 태그를 확인해 주세요.'},400)
+      const id=crypto.randomUUID(),now=iso();await db.prepare('INSERT INTO strategy_notes_d1 (id,owner_id,ticker,content,tag,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?6)').bind(id,ownerId,body.ticker.toUpperCase(),content.slice(0,4000),tag,now).run()
+      const note=await db.prepare('SELECT id,ticker,content,tag,created_at AS createdAt,updated_at AS updatedAt FROM strategy_notes_d1 WHERE id=?1 AND owner_id=?2').bind(id,ownerId).first();return json({note})
+    }
+    if(body.action==='update'){
+      if(!body.id||!content||!tag)return json({error:'수정할 내용과 태그를 확인해 주세요.'},400)
+      await db.prepare('UPDATE strategy_notes_d1 SET content=?1,tag=?2,updated_at=?3 WHERE id=?4 AND owner_id=?5').bind(content.slice(0,4000),tag,iso(),body.id,ownerId).run()
+      const note=await db.prepare('SELECT id,ticker,content,tag,created_at AS createdAt,updated_at AS updatedAt FROM strategy_notes_d1 WHERE id=?1 AND owner_id=?2').bind(body.id,ownerId).first();if(!note)return json({error:'전략노트를 찾을 수 없습니다.'},404);return json({note})
+    }
+    if(body.action==='delete'){
+      if(!body.id)return json({error:'삭제할 전략노트가 없습니다.'},400);await db.prepare('DELETE FROM strategy_notes_d1 WHERE id=?1 AND owner_id=?2').bind(body.id,ownerId).run();return json({ok:true})
+    }
+    if(body.action==='migrate'){
+      for(const note of body.notes??[]){if(!note.ticker||!note.content||!note.tag||!tags.has(note.tag))continue;const now=iso();await db.prepare('INSERT OR IGNORE INTO strategy_notes_d1 (id,owner_id,ticker,content,tag,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7)').bind(note.id??crypto.randomUUID(),ownerId,note.ticker.toUpperCase(),note.content.slice(0,4000),note.tag,note.createdAt??now,note.updatedAt??now).run()}return json({notes:(await selectNotes()).results})
+    }
+    return json({error:'Invalid action'},400)
+  }
   if(path==='/api/push/subscribe'&&request.method==='POST'){const body=await request.json() as {endpoint?:string;keys?:{p256dh?:string;auth?:string}};if(!body.endpoint||!body.keys?.p256dh||!body.keys.auth)return json({error:'Invalid subscription'},400);const id=crypto.randomUUID(),now=iso();await db.prepare("INSERT INTO push_subscriptions (id,owner_id,endpoint,p256dh,auth,user_agent,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?7) ON CONFLICT(owner_id,endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,active=1,updated_at=excluded.updated_at").bind(id,ownerId,body.endpoint,body.keys.p256dh,body.keys.auth,request.headers.get('user-agent'),now).run();return json({ok:true,authSource:identity.source})}
   if(path==='/api/push/test'&&request.method==='POST'){const result=await dispatchOwner(db,env,ownerId,{id:'test',title:'MyStockLog 테스트 알림',body:'가격구간 알림이 정상적으로 연결되었습니다.',ticker:'',type:'test'});return json({ok:result.sent>0,...result},result.sent?200:422)}
   if(path==='/api/alerts'&&request.method==='POST'){const body=await request.json() as {action?:string;stocks?:{ticker:string;company:string}[];ticker?:string;field?:string;value?:boolean};if(body.action==='init'){await initSettings(db,ownerId,body.stocks??[])}else if(body.action==='update'&&body.ticker&&['is_holding','buy_enabled','sell_enabled','paused'].includes(body.field??'')){const field=body.field!,value=body.value?1:0;if(field==='is_holding'&&value)await db.prepare('UPDATE stock_alert_settings SET is_holding=1,sell_enabled=CASE WHEN sell_manually_disabled=0 THEN 1 ELSE sell_enabled END,updated_at=?1 WHERE owner_id=?2 AND ticker=?3').bind(iso(),ownerId,body.ticker).run();else await db.prepare(`UPDATE stock_alert_settings SET ${field}=?1,${field==='sell_enabled'&&!value?'sell_manually_disabled=1,':''}updated_at=?2 WHERE owner_id=?3 AND ticker=?4`).bind(value,iso(),ownerId,body.ticker).run()}else if(body.action==='bulk_buy')await db.prepare('UPDATE stock_alert_settings SET buy_enabled=?1,updated_at=?2 WHERE owner_id=?3 AND active=1').bind(body.value?1:0,iso(),ownerId).run();else if(body.action==='bulk_holding_sell')await db.prepare('UPDATE stock_alert_settings SET sell_enabled=?1,updated_at=?2 WHERE owner_id=?3 AND is_holding=1 AND active=1').bind(body.value?1:0,iso(),ownerId).run();else if(body.action==='pause_all')await db.prepare('UPDATE stock_alert_settings SET paused=?1,updated_at=?2 WHERE owner_id=?3').bind(body.value?1:0,iso(),ownerId).run();else if(body.action==='read_all')await db.prepare('UPDATE price_alert_events SET read_at=?1 WHERE owner_id=?2 AND read_at IS NULL').bind(iso(),ownerId).run();else return json({error:'Invalid action'},400)}

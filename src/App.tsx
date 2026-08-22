@@ -28,7 +28,7 @@ type ApiTextKey = keyof ApiConfig
 type Connection = 'idle'|'testing'|'ok'|'error'
 
 const emptyConfig:ApiConfig={sheetsKey:'',sheetId:'',supabaseUrl:'',supabaseAnonKey:'',openAiKey:''}
-const APP_VERSION='v2.5.0'
+const APP_VERSION='v2.5.1'
 const tags=['가격','실적','이슈','리스크','전략']
 const periods:Period[]=['1M','3M','6M','1Y','3Y','5Y']
 const currentYear=new Date().getUTCFullYear()
@@ -90,7 +90,7 @@ function App(){
 
   if(!hydrated)return <div className="app-loading">MyStockLog</div>
 
-  return <div className="app-shell"><aside className={mobileNav?'sidebar open':'sidebar'}><div className="brand"><div className="brand-mark"><b>M</b><i/><i/><i/></div><div><strong>MyStockLog</strong><span>MARKET JOURNAL</span></div><button aria-label="메뉴 닫기" className="mobile-close" onClick={()=>setMobileNav(false)}><X/></button></div><nav>{([['home','홈',Home],['stock','개별종목',FileSpreadsheet],['notes','전략노트',NotebookPen],['settings','설정',Settings]] as const).map(([key,label,Icon])=><button key={key} className={page===key?'active':''} onClick={()=>navigate(key)}><Icon/>{label}</button>)}</nav><div className="sidebar-foot"><span>MyStockLog · {APP_VERSION}</span><small>정보 비교용 · 투자 권유 아님</small></div></aside>
+  return <div className="app-shell"><aside className={mobileNav?'sidebar open':'sidebar'}><div className="brand"><button type="button" className="brand-home" aria-label="MyStockLog 홈으로 이동" onClick={()=>navigate('home')}><div className="brand-mark"><b>M</b><i/><i/><i/></div><div><strong>MyStockLog</strong><span>MARKET JOURNAL</span></div></button><button aria-label="메뉴 닫기" className="mobile-close" onClick={()=>setMobileNav(false)}><X/></button></div><nav>{([['home','홈',Home],['stock','개별종목',FileSpreadsheet],['notes','전략노트',NotebookPen],['settings','설정',Settings]] as const).map(([key,label,Icon])=><button key={key} className={page===key?'active':''} onClick={()=>navigate(key)}><Icon/>{label}</button>)}</nav><div className="sidebar-foot"><span>MyStockLog · {APP_VERSION}</span><small>정보 비교용 · 투자 권유 아님</small></div></aside>
     <main><header><button aria-label="메뉴 열기" className="menu-button" onClick={()=>setMobileNav(true)}><Menu/></button><h1>{page==='home'?'관심종목 비교':page==='stock'?'개별종목':page==='notes'?'전략노트':'설정'}</h1><span className="app-version">{APP_VERSION}</span><div className={`connection-pill ${dataMode}`}>{loading?'데이터 확인 중':updatedAt?<><span>마지막 갱신 {formatUpdatedAt(updatedAt)} KST</span><small>종가 기준 {marketDate??'—'}</small></>:'저장된 갱신 이력 없음'}</div></header>
       {page==='home'&&<><MarketOverviewStrip items={marketOverview}/><GroupFilter groups={catalog.groups} selected={activeGroup?.id??''} onSelect={setSelectedGroup}/><HomePage stocks={stocks} allCount={activeGroup?.tickers.length??allStocks.length} query={query} setQuery={setQuery} sort={sort} sortBy={key=>setSort(p=>({key,dir:p.key===key?p.dir===1?-1:1:1}))} onQuick={setQuickTicker} validation={validationCounts} refresh={refreshMarket} loading={refreshing}/></>}
       {page==='stock'&&selected&&<StockPage stock={selected} stocks={allStocks} detailTab={detailTab} setDetailTab={setDetailTab} selectTicker={setSelectedTicker} noteText={noteText} setNoteText={setNoteText} noteTag={noteTag} setNoteTag={setNoteTag} addNote={addNote} noteMessage={noteMessage}/>} 

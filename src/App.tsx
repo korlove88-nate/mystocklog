@@ -25,7 +25,7 @@ type ApiTextKey = keyof ApiConfig
 type Connection = 'idle'|'testing'|'ok'|'error'
 
 const emptyConfig:ApiConfig={sheetsKey:'',sheetId:'',supabaseUrl:'',supabaseAnonKey:'',openAiKey:''}
-const APP_VERSION='v2.2.0'
+const APP_VERSION='v2.2.1'
 const tags=['가격','실적','이슈','리스크','전략']
 const periods:Period[]=['1M','3M','6M','1Y','3Y','5Y']
 const currentYear=new Date().getUTCFullYear()

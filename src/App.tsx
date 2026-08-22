@@ -27,7 +27,7 @@ type ApiTextKey = keyof ApiConfig
 type Connection = 'idle'|'testing'|'ok'|'error'
 
 const emptyConfig:ApiConfig={sheetsKey:'',sheetId:'',supabaseUrl:'',supabaseAnonKey:'',openAiKey:''}
-const APP_VERSION='v2.4.4'
+const APP_VERSION='v2.4.5'
 const tags=['가격','실적','이슈','리스크','전략']
 const periods:Period[]=['1M','3M','6M','1Y','3Y','5Y']
 const currentYear=new Date().getUTCFullYear()
@@ -56,7 +56,7 @@ function App(){
   const [allStocks,setAllStocks]=useState(defaultStockSnapshots),[dataMode,setDataMode]=useState<DataMode>('fallback'),[marketDate,setMarketDate]=useState<string|null>(null),[updatedAt,setUpdatedAt]=useState<string|null>(null),[loading,setLoading]=useState(true)
   const [catalog,setCatalog]=useState<MarketCatalog>(defaultCatalog),[selectedGroup,setSelectedGroup]=useState(defaultCatalog.groups[0].id),[marketOverview,setMarketOverview]=useState<MarketOverviewItem[]>(emptyMarketOverview)
   const [validation,setValidation]=useState<ValidationRow[]>([])
-  const [refreshState,setRefreshState]=useState<RefreshState>(null),[refreshing,setRefreshing]=useState(false),[refreshMessage,setRefreshMessage]=useState('')
+  const [,setRefreshState]=useState<RefreshState>(null),[refreshing,setRefreshing]=useState(false),[,setRefreshMessage]=useState('')
   const [config,setConfig]=useState<ApiConfig>(()=>typeof window==='undefined'?emptyConfig:loadJson('im-ant-api-config',emptyConfig)),[draftConfig,setDraftConfig]=useState<ApiConfig>(()=>typeof window==='undefined'?emptyConfig:loadJson('im-ant-api-config',emptyConfig))
   const [tossConnection,setTossConnection]=useState<Connection>('idle'),[googleConnection,setGoogleConnection]=useState<Connection>('idle'),[supabaseConnection,setSupabaseConnection]=useState<Connection>('idle')
   const [notes,setNotes]=useState<StrategyNote[]>(()=>typeof window==='undefined'?[]:loadJson('im-ant-notes',[])),[noteText,setNoteText]=useState(''),[noteTag,setNoteTag]=useState('전략'),[noteFilter,setNoteFilter]=useState('전체')
@@ -89,7 +89,7 @@ function App(){
 
   return <div className="app-shell"><aside className={mobileNav?'sidebar open':'sidebar'}><div className="brand"><div className="brand-mark"><b>M</b><i/><i/><i/></div><div><strong>MyStockLog</strong><span>MARKET JOURNAL</span></div><button aria-label="메뉴 닫기" className="mobile-close" onClick={()=>setMobileNav(false)}><X/></button></div><nav>{([['home','홈',Home],['stock','개별종목',FileSpreadsheet],['notes','전략노트',NotebookPen],['settings','설정',Settings]] as const).map(([key,label,Icon])=><button key={key} className={page===key?'active':''} onClick={()=>navigate(key)}><Icon/>{label}</button>)}</nav><div className="sidebar-foot"><span>MyStockLog · {APP_VERSION}</span><small>정보 비교용 · 투자 권유 아님</small></div></aside>
     <main><header><button aria-label="메뉴 열기" className="menu-button" onClick={()=>setMobileNav(true)}><Menu/></button><h1>{page==='home'?'관심종목 비교':page==='stock'?'개별종목':page==='notes'?'전략노트':'설정'}</h1><span className="app-version">{APP_VERSION}</span><div className={`connection-pill ${dataMode}`}>{loading?'데이터 확인 중':updatedAt?<><span>마지막 갱신 {formatUpdatedAt(updatedAt)} KST</span><small>종가 기준 {marketDate??'—'}</small></>:'저장된 갱신 이력 없음'}</div></header>
-      {page==='home'&&<><MarketOverviewStrip items={marketOverview}/><GroupFilter groups={catalog.groups} selected={activeGroup?.id??''} onSelect={setSelectedGroup}/>{allStocks.some(stock=>stock.stale)&&<div className="stale-warning">TOSS 데이터 갱신 필요</div>}{(refreshMessage||updatedAt)&&<div className={`refresh-feedback ${refreshing?'running':refreshState?.status??''}`}><span>{refreshing?'갱신 중...':refreshMessage||`마지막 갱신 ${formatUpdatedAt(updatedAt)} KST`}</span>{updatedAt&&<small>마지막 갱신 {formatUpdatedAt(updatedAt)} KST</small>}</div>}<HomePage stocks={stocks} allCount={activeGroup?.tickers.length??allStocks.length} query={query} setQuery={setQuery} sort={sort} sortBy={key=>setSort(p=>({key,dir:p.key===key?p.dir===1?-1:1:1}))} onQuick={setQuickTicker} validation={validationCounts} refresh={refreshMarket} loading={refreshing}/></>}
+      {page==='home'&&<><MarketOverviewStrip items={marketOverview}/><GroupFilter groups={catalog.groups} selected={activeGroup?.id??''} onSelect={setSelectedGroup}/><HomePage stocks={stocks} allCount={activeGroup?.tickers.length??allStocks.length} query={query} setQuery={setQuery} sort={sort} sortBy={key=>setSort(p=>({key,dir:p.key===key?p.dir===1?-1:1:1}))} onQuick={setQuickTicker} validation={validationCounts} refresh={refreshMarket} loading={refreshing}/></>}
       {page==='stock'&&selected&&<StockPage stock={selected} stocks={allStocks} detailTab={detailTab} setDetailTab={setDetailTab} selectTicker={setSelectedTicker} noteText={noteText} setNoteText={setNoteText} noteTag={noteTag} setNoteTag={setNoteTag} addNote={addNote} noteMessage={noteMessage}/>} 
       {page==='notes'&&<NotesPage notes={visibleNotes} allNotes={notes} filter={noteFilter} setFilter={setNoteFilter} remove={removeNote} update={updateNote} connected={supabaseConnection==='ok'} tab={notesTab} setTab={setNotesTab} stocks={allStocks} service={notesService}/>}
       {page==='settings'&&<HybridSettingsPage

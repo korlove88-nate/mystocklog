@@ -5,8 +5,16 @@ export const ANALYSIS_THRESHOLDS={
   volumeConcentrated:1.50,
   clusterFallbackPercent:0.03,
   clusterAtrMultiplier:1.25,
+  duplicateEventPercent:0.005,
+  duplicateEventAtrMultiplier:0.20,
+  reactionLookaheadDays:10,
+  reactionMovePercent:0.02,
+  reactionCooldownDays:5,
+  volumeProfileDays:120,
+  volumeProfileBins:20,
+  volumeProfileMinimumDays:30,
   zoneApproachPercent:0.03,
   virtualPriceRange:0.30,
   virtualPriceStep:0.01,
+  zoneConfidenceWeights:{priceStructure:30,maStructure:20,mdd:15,volumeProfile:20,repeatedReaction:15},
 } as const
-

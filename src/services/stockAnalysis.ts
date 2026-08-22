@@ -1,14 +1,15 @@
 import type { HistoricalPrice, MetricValue, StockSnapshot } from '../types'
 import { opportunityScore } from './fundamentalsAnalysis'
 import { ANALYSIS_THRESHOLDS as T } from './analysisConstants'
-import { calculateMovingAverageSeries, normalizeHistoricalPrices } from './metricsCalculator'
+import { calculateAnnualMdd, calculateMovingAverageSeries, normalizeHistoricalPrices } from './metricsCalculator'
 
 export type MaKey='ma20'|'ma60'|'ma120'|'ma200'
 export type MaDirection='상승 중'|'횡보'|'하락 중'|'데이터 부족'
 export type TrendState='강한 상승'|'상승 우세'|'방향 탐색'|'약세 우세'|'강한 하락'
 export type VolumeState='거래 집중'|'참여 증가'|'평소 수준'|'관심 감소'|'데이터 부족'
-export type PriceZone={low:number;high:number;status:string;distance:MetricValue;relation:string;reasons:ZoneReason[];method:'ATR'|'현재가 비율'}
-export type ZoneReason={name:string;price:number;date:string|null;source:string}
+export type ZoneReaction={tests:number;successes:number;rate:MetricValue;label:string}
+export type PriceZone={low:number;high:number;status:string;distance:MetricValue;relation:string;reasons:ZoneReason[];method:'ATR'|'현재가 비율';confidence:number;confidenceLabel:string;confidenceCompleteness:number;reaction:ZoneReaction;volumeProfilePrice:MetricValue;maCluster:boolean}
+export type ZoneReason={name:string;price:number;date:string|null;source:string;duplicateGroup?:string}
 export type StockAnalysis={
   asOf:string|null;price:MetricValue;opportunity:ReturnType<typeof opportunityScore>;opportunityLabel:string;opportunityMeaning:string;
   completeness:number;ma:Record<MaKey,{value:MetricValue;difference:MetricValue;direction:MaDirection}>;arrangement:'정배열'|'역배열'|'혼조 배열'|'데이터 부족';trend:TrendState;
@@ -18,7 +19,7 @@ export type StockAnalysis={
 
 const valid=(value:unknown):value is number=>typeof value==='number'&&Number.isFinite(value)
 const priceOf=(point:HistoricalPrice)=>valid(point.adjustedClose)?point.adjustedClose:point.close
-const median=(values:number[])=>{const sorted=[...values].sort((a,b)=>a-b);return sorted.length?sorted[Math.floor(sorted.length/2)]:null}
+export const median=(values:number[])=>{const sorted=[...values].sort((a,b)=>a-b);if(!sorted.length)return null;const middle=Math.floor(sorted.length/2);return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2}
 const pctDistance=(price:number,low:number,high:number)=>price<low?low/price-1:price>high?high/price-1:0
 
 export function opportunityInterpretation(score:MetricValue){
@@ -60,25 +61,64 @@ export function trendAnalysis(prices:HistoricalPrice[],currentPrice:MetricValue)
 }
 
 const averageTrueRange=(prices:HistoricalPrice[])=>{const points=normalizeHistoricalPrices(prices).slice(-15);if(points.length<15||points.some(point=>!valid(point.high)||!valid(point.low)))return null;const ranges=points.slice(1).map((point,index)=>Math.max(point.high!-point.low!,Math.abs(point.high!-points[index].close),Math.abs(point.low!-points[index].close)));return ranges.reduce((a,b)=>a+b,0)/ranges.length}
+export const clusterTolerance=(atr:number|null,price:number)=>Math.max(.015,Math.min(.08,atr?atr/price*T.clusterAtrMultiplier:T.clusterFallbackPercent))
+const confidenceLabel=(score:number)=>score>=80?'매우 높음':score>=65?'높음':score>=45?'보통':'낮음'
+const emptyReaction=(type:'buy'|'sell'):ZoneReaction=>({tests:0,successes:0,rate:null,label:`과거 ${type==='buy'?'지지':'저항'} 반응 데이터 부족`})
 const cluster=(reasons:ZoneReason[],price:number,method:PriceZone['method'],tolerance:number,type:'buy'|'sell'):PriceZone|null=>{
   const candidates=reasons.filter(reason=>reason.price>0).sort((a,b)=>a.price-b.price)
   let best:ZoneReason[]=[]
   for(let i=0;i<candidates.length;i++){const group=candidates.filter(item=>Math.abs(item.price-candidates[i].price)/price<=tolerance);if(group.length>best.length)best=group}
-  if(best.length<2){const eligible=candidates.filter(item=>type==='buy'?item.price<=price*1.15:item.price>=price*.85),nearest=[...(eligible.length?eligible:candidates)].sort((a,b)=>Math.abs(a.price-price)-Math.abs(b.price-price))[0];if(!nearest)return null;const band=Math.max(nearest.price*.005,price*tolerance*.25),low=nearest.price-band,high=nearest.price+band,distance=pctDistance(price,low,high),relation=price>high?`${type==='buy'?'관심':'차익관리'} 구간까지 ${(distance*100).toFixed(1)}%`:price<low?(type==='buy'?'관심 구간을 하향 이탈':`차익관리 구간까지 +${(distance*100).toFixed(1)}%`):(type==='buy'?'현재 매수 관심 구간':'현재 차익관리 구간');return{low,high,status:'신뢰도 낮음 · 단일 기준',distance,relation,reasons:[nearest],method}}
+  if(best.length<2){const eligible=candidates.filter(item=>type==='buy'?item.price<=price*1.15:item.price>=price*.85),nearest=[...(eligible.length?eligible:candidates)].sort((a,b)=>Math.abs(a.price-price)-Math.abs(b.price-price))[0];if(!nearest)return null;const band=Math.max(nearest.price*.005,price*tolerance*.25),low=nearest.price-band,high=nearest.price+band,distance=pctDistance(price,low,high),relation=price>high?`${type==='buy'?'관심':'차익관리'} 구간까지 ${(distance*100).toFixed(1)}%`:price<low?(type==='buy'?'관심 구간을 하향 이탈':`차익관리 구간까지 +${(distance*100).toFixed(1)}%`):(type==='buy'?'현재 매수 관심 구간':'현재 차익관리 구간');return{low,high,status:'신뢰도 낮음 · 단일 기준',distance,relation,reasons:[nearest],method,confidence:0,confidenceLabel:'낮음',confidenceCompleteness:0,reaction:emptyReaction(type),volumeProfilePrice:null,maCluster:false}}
   const low=Math.min(...best.map(item=>item.price)),high=Math.max(...best.map(item=>item.price)),distance=pctDistance(price,low,high)
   const relation=price>high?`${type==='buy'?'관심':'차익관리'} 구간까지 ${(distance*100).toFixed(1)}%`:price<low?(type==='buy'?'관심 구간을 하향 이탈':`차익관리 구간까지 +${(distance*100).toFixed(1)}%`):(type==='buy'?'현재 매수 관심 구간':'현재 차익관리 구간')
-  return{low,high,status:type==='buy'?(best.length>=4?'강한 관심 후보':best.length===3?'2차 관심':'1차 관심'):'저항 중첩',distance,relation,reasons:best,method}
+  return{low,high,status:type==='buy'?(best.length>=4?'강한 관심 후보':best.length===3?'2차 관심':'1차 관심'):'저항 중첩',distance,relation,reasons:best,method,confidence:0,confidenceLabel:'낮음',confidenceCompleteness:0,reaction:emptyReaction(type),volumeProfilePrice:null,maCluster:false}
 }
 
-export function calculatePriceZones(stock:StockSnapshot){
+export function volumeProfilePrice(prices:HistoricalPrice[]):MetricValue{
+  const points=normalizeHistoricalPrices(prices).slice(-T.volumeProfileDays).filter(point=>valid(point.volume)&&point.volume>0)
+  if(points.length<T.volumeProfileMinimumDays)return null
+  const values=points.map(point=>({price:valid(point.high)&&valid(point.low)?(point.high+point.low+priceOf(point))/3:priceOf(point),volume:point.volume as number})),low=Math.min(...values.map(item=>item.price)),high=Math.max(...values.map(item=>item.price))
+  if(high<=low)return low
+  const width=(high-low)/T.volumeProfileBins,bins=Array.from({length:T.volumeProfileBins},()=>0)
+  for(const item of values)bins[Math.min(T.volumeProfileBins-1,Math.floor((item.price-low)/width))]+=item.volume
+  const index=bins.indexOf(Math.max(...bins));return low+(index+.5)*width
+}
+
+function reactionStats(points:HistoricalPrice[],zone:PriceZone,type:'buy'|'sell',atr:number|null):ZoneReaction{
+  if(points.length<T.reactionLookaheadDays+1)return emptyReaction(type)
+  const approach=Math.max((atr??0)/Math.max(zone.low,1),T.duplicateEventPercent),move=Math.max(T.reactionMovePercent,(atr??0)/Math.max(zone.low,1)*.5)
+  let tests=0,successes=0,lastTest=-Infinity
+  for(let index=0;index<points.length-T.reactionLookaheadDays;index++){
+    if(index-lastTest<T.reactionCooldownDays)continue
+    const value=priceOf(points[index]),near=value>=zone.low*(1-approach)&&value<=zone.high*(1+approach);if(!near)continue
+    tests++;lastTest=index;const future=points.slice(index+1,index+1+T.reactionLookaheadDays).map(priceOf)
+    if(type==='buy'?Math.max(...future)>=value*(1+move):Math.min(...future)<=value*(1-move))successes++
+  }
+  return{tests,successes,rate:tests?successes/tests:null,label:tests?`과거 ${type==='buy'?'지지':'저항'} 반응 ${successes}/${tests}`:`과거 ${type==='buy'?'지지':'저항'} 반응 데이터 부족`}
+}
+
+function scoreZone(zone:PriceZone,allReasons:ZoneReason[],points:HistoricalPrice[],type:'buy'|'sell',atr:number|null,profile:MetricValue){
+  const W=T.zoneConfidenceWeights,names=new Set(zone.reasons.map(reason=>reason.name)),groups=new Set(zone.reasons.filter(reason=>!reason.name.startsWith('MA')&&reason.name!=='MDD 기준가격').map(reason=>reason.duplicateGroup??reason.name)),maCount=['MA60','MA120','MA200'].filter(name=>names.has(name)).length
+  const maCluster=maCount===3,priceScore=Math.min(W.priceStructure,groups.size*15),maScore=Math.min(W.maStructure,maCount*5+(maCluster?5:0)),mddScore=names.has('MDD 기준가격')?8:0
+  const profileAvailable=profile!==null,profileOverlap=profileAvailable&&profile!>=zone.low*(1-T.duplicateEventPercent)&&profile!<=zone.high*(1+T.duplicateEventPercent),volumeScore=profileOverlap?W.volumeProfile:0,reaction=reactionStats(points,zone,type,atr),reactionAvailable=reaction.rate!==null,reactionScore=reactionAvailable?W.repeatedReaction*reaction.rate!:0
+  const priceAvailable=allReasons.some(reason=>!reason.name.startsWith('MA')&&reason.name!=='MDD 기준가격'),maAvailable=allReasons.some(reason=>reason.name.startsWith('MA')),mddAvailable=allReasons.some(reason=>reason.name==='MDD 기준가격'),available=(priceAvailable?W.priceStructure:0)+(maAvailable?W.maStructure:0)+(mddAvailable?W.mdd:0)+(profileAvailable?W.volumeProfile:0)+(reactionAvailable?W.repeatedReaction:0),raw=priceScore+maScore+mddScore+volumeScore+reactionScore,confidence=available?Math.round(raw/available*100):0
+  return{...zone,confidence,confidenceLabel:confidenceLabel(confidence),confidenceCompleteness:available,reaction,volumeProfilePrice:profileOverlap?profile:null,maCluster}
+}
+
+export function calculatePriceZones(stock:StockSnapshot,asOf?:string){
   if(!valid(stock.price))return{buyZone:null,sellZone:null}
-  const points=normalizeHistoricalPrices(stock.priceHistory),price=stock.price,latestDate=points.at(-1)?.date??null,atr=averageTrueRange(points),tolerance=Math.max(.015,Math.min(.08,atr?atr/price*T.clusterAtrMultiplier:T.clusterFallbackPercent)),method:PriceZone['method']=atr?'ATR':'현재가 비율'
+  const points=normalizeHistoricalPrices(stock.priceHistory).filter(point=>!asOf||point.date<=asOf);if(!points.length)return{buyZone:null,sellZone:null}
+  const historical=Boolean(asOf),series=calculateMovingAverageSeries(points),lastSeries=series.at(-1),price=historical?priceOf(points.at(-1)!):stock.price,latestDate=points.at(-1)?.date??null,atr=averageTrueRange(points),tolerance=clusterTolerance(atr,price),method:PriceZone['method']=atr?'ATR':'현재가 비율'
   const recent=points.slice(-60),swingLow=recent.length?Math.min(...recent.map(point=>point.low??priceOf(point))):null,swingHigh=recent.length?Math.max(...recent.map(point=>point.high??priceOf(point))):null
-  const mdds=Object.values(stock.mdd).filter(valid).map(Math.abs),mddMedian=median(mdds),mddPrice=valid(stock.high52)&&mddMedian!==null?stock.high52*(1-mddMedian):null
+  const trailing=points.slice(-252),derivedHigh=Math.max(...trailing.map(point=>point.high??priceOf(point))),derivedLow=Math.min(...trailing.map(point=>point.low??priceOf(point))),high52=historical?derivedHigh:stock.high52,low52=historical?derivedLow:stock.low52,ath=historical?Math.max(...points.map(priceOf)):stock.ath
+  const years=[...new Set(points.map(point=>Number(point.date.slice(0,4))))].slice(-5),yearMdds=(historical?years.map(year=>calculateAnnualMdd(points,year)):Object.values(stock.mdd)).filter(valid).map(Math.abs),mddMedian=median(yearMdds),mddPrice=valid(high52)&&mddMedian!==null?high52*(1-mddMedian):null
   const reason=(name:string,value:MetricValue,source='앱 계산'):ZoneReason[]=>valid(value)?[{name,price:value,date:latestDate,source}]:[]
-  const buyReasons=[...reason('최근 스윙 저점',swingLow),...reason('52주 저점',stock.low52),...reason('MDD 기준가격',mddPrice),...reason('MA60',stock.ma60),...reason('MA120',stock.ma120),...reason('MA200',stock.ma200)]
-  const sellReasons=[...reason('최근 스윙 고점',swingHigh),...reason('52주 고점',stock.high52),...reason('ATH',stock.ath),...reason('MA60',valid(stock.ma60)&&stock.ma60>price?stock.ma60:null),...reason('MA120',valid(stock.ma120)&&stock.ma120>price?stock.ma120:null),...reason('MA200',valid(stock.ma200)&&stock.ma200>price?stock.ma200:null)]
-  const buyZone=cluster(buyReasons,price,method,tolerance,'buy'),sellZone=cluster(sellReasons,price,method,tolerance,'sell')
+  const mas={ma60:historical?lastSeries?.ma60??null:stock.ma60,ma120:historical?lastSeries?.ma120??null:stock.ma120,ma200:historical?lastSeries?.ma200??null:stock.ma200},duplicateTolerance=Math.max(T.duplicateEventPercent,Math.min(.01,atr?atr/price*T.duplicateEventAtrMultiplier:0))
+  const buyReasons=[...reason('최근 스윙 저점',swingLow),...reason('52주 저점',low52),...reason('MDD 기준가격',mddPrice),...reason('MA60',mas.ma60),...reason('MA120',mas.ma120),...reason('MA200',mas.ma200)]
+  const sellReasons=[...reason('최근 스윙 고점',swingHigh),...reason('52주 고점',high52),...reason('ATH',ath),...reason('MA60',valid(mas.ma60)&&mas.ma60>price?mas.ma60:null),...reason('MA120',valid(mas.ma120)&&mas.ma120>price?mas.ma120:null),...reason('MA200',valid(mas.ma200)&&mas.ma200>price?mas.ma200:null)]
+  if(valid(swingLow)&&valid(low52)&&Math.abs(swingLow-low52)/price<=duplicateTolerance)for(const item of buyReasons.filter(item=>item.name==='최근 스윙 저점'||item.name==='52주 저점'))item.duplicateGroup='동일 저점 사건'
+  if(valid(swingHigh)&&valid(high52)&&Math.abs(swingHigh-high52)/price<=duplicateTolerance)for(const item of sellReasons.filter(item=>item.name==='최근 스윙 고점'||item.name==='52주 고점'))item.duplicateGroup='동일 고점 사건'
+  const profile=volumeProfilePrice(points),rawBuy=cluster(buyReasons,price,method,tolerance,'buy'),rawSell=cluster(sellReasons,price,method,tolerance,'sell'),buyZone=rawBuy?scoreZone(rawBuy,buyReasons,points,'buy',atr,profile):null,sellZone=rawSell?scoreZone(rawSell,sellReasons,points,'sell',atr,profile):null
   if(buyZone&&sellZone&&buyZone.high>=sellZone.low){buyZone.status='판단 제한 · 가격대 중첩';sellZone.status='판단 제한 · 가격대 중첩'}
   return{buyZone,sellZone}
 }

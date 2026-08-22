@@ -27,7 +27,7 @@ type ApiTextKey = keyof ApiConfig
 type Connection = 'idle'|'testing'|'ok'|'error'
 
 const emptyConfig:ApiConfig={sheetsKey:'',sheetId:'',supabaseUrl:'',supabaseAnonKey:'',openAiKey:''}
-const APP_VERSION='v2.4.2'
+const APP_VERSION='v2.4.3'
 const tags=['가격','실적','이슈','리스크','전략']
 const periods:Period[]=['1M','3M','6M','1Y','3Y','5Y']
 const currentYear=new Date().getUTCFullYear()
@@ -180,11 +180,11 @@ function NotesPage({notes,allNotes,filter,setFilter,remove,update,connected,tab,
 function PriceAlertsPage({stocks,service,connected}:{stocks:StockSnapshot[];service:StrategyNotesService|null;connected:boolean}){
   const [dashboard,setDashboard]=useState<AlertDashboard|null>(null),[message,setMessage]=useState(''),[query,setQuery]=useState(''),[filter,setFilter]=useState('전체'),[busy,setBusy]=useState(false)
   const [pushDiagnostic,setPushDiagnostic]=useState<string[]>([])
-  const reload=async(init=false)=>{if(!service||!connected)return;try{if(init)await alertAction(service,{action:'init',stocks:stocks.map(stock=>({ticker:stock.ticker,company:stock.company}))});setDashboard(await loadAlerts(service))}catch(error){setMessage(error instanceof Error?error.message:'알림 정보를 불러오지 못했습니다.')}}
+  const reload=async(init=false)=>{try{if(init)await alertAction(service,{action:'init',stocks:stocks.map(stock=>({ticker:stock.ticker,company:stock.company}))});setDashboard(await loadAlerts(service))}catch(error){setMessage(error instanceof Error?error.message:'알림 정보를 불러오지 못했습니다.')}}
   // Loading is intentionally tied to the authenticated storage connection and catalog size.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(()=>{void Promise.resolve().then(()=>reload(true))},[service,connected,stocks.length])
-  const act=async(body:Record<string,unknown>)=>{if(!service)return;setBusy(true);try{setDashboard(await alertAction(service,body));setMessage('설정이 저장되었습니다.')}catch(error){setMessage(error instanceof Error?error.message:'설정 저장 실패')}finally{setBusy(false)}}
+  const act=async(body:Record<string,unknown>)=>{setBusy(true);try{setDashboard(await alertAction(service,body));setMessage('설정이 저장되었습니다.')}catch(error){setMessage(error instanceof Error?error.message:'설정 저장 실패')}finally{setBusy(false)}}
   const addDiagnostic=(value:string)=>setPushDiagnostic(previous=>[...previous,value])
   const stageMessage=(stage:PushSubscribeStage)=>({
     'service-worker-registering':'Service Worker: 등록 중',
@@ -211,16 +211,16 @@ function PriceAlertsPage({stocks,service,connected}:{stocks:StockSnapshot[];serv
       addDiagnostic(`권한 결과: ${result}`)
       if(result==='denied'){setMessage('알림 권한이 거부되었습니다. iPhone 설정 → 알림 → MyStockLog에서 허용해 주세요.');return}
       if(result==='default'){setMessage('알림 권한 선택이 완료되지 않았습니다. 알림 허용을 다시 눌러 선택해 주세요.');return}
-      if(!service||!connected)throw new Error('로그인 사용자 저장소 연결이 필요합니다. 설정에서 전략노트 저장소 연결을 확인해 주세요.')
       setMessage('푸시 구독을 연결하고 있습니다...')
       const subscribed=await subscribePush(service,stage=>addDiagnostic(stageMessage(stage)))
+      addDiagnostic(`사용자 인증: connected (${subscribed.authSource==='sites'?'MyStockLog Sites':'Supabase'})`)
       addDiagnostic(`Endpoint: ${subscribed.endpoint?'생성됨':'없음'}`)
       setDashboard(previous=>previous?{...previous,pushSubscribed:true}:previous)
       setMessage('휴대폰 알림이 연결되었습니다.')
       await reload()
     }catch(error){const detail=error instanceof Error?error.message:'알림 연결 실패';addDiagnostic(`오류: ${detail}`);setMessage(detail)}finally{setBusy(false)}
   }
-  const test=async()=>{if(!service)return;try{await testPush(service);setMessage('테스트 알림을 보냈습니다.')}catch(error){setMessage(error instanceof Error?error.message:'테스트 알림 실패')}}
+  const test=async()=>{try{await testPush(service);setMessage('테스트 알림을 보냈습니다.')}catch(error){setMessage(error instanceof Error?error.message:'테스트 알림 실패')}}
   const support=detectPushSupport(),permission=support.permission==='unsupported'?'지원 안 됨':support.permission==='granted'?'허용됨':support.permission==='denied'?'차단됨':'허용 필요',settings=dashboard?.settings??[],stockMap=new Map(stocks.map(stock=>[stock.ticker,stock])),rows=settings.map(setting=>{const stock=stockMap.get(setting.ticker),analysis=stock?buildStockAnalysis(stock,stocks):null;return{setting,stock,analysis}}).filter(row=>`${row.setting.ticker} ${row.setting.company??''}`.toLowerCase().includes(query.toLowerCase())).filter(row=>filter==='전체'||filter==='보유 종목'&&row.setting.is_holding||filter==='매수 관심 알림'&&row.setting.buy_enabled||filter==='차익관리 알림'&&row.setting.sell_enabled||filter==='구간 진입'&&(row.setting.buy_state==='inside'||row.setting.sell_state==='inside')||filter==='구간 접근'&&(row.setting.buy_state==='approaching'||row.setting.sell_state==='approaching')||filter==='데이터 부족'&&(!row.analysis?.buyZone||!row.analysis?.sellZone))
   const zone=(value:PriceZone|null|undefined)=>value?`$${value.low.toFixed(2)}~${value.high.toFixed(2)}`:'데이터 부족'
   const allPaused=settings.length>0&&settings.every(item=>item.paused)

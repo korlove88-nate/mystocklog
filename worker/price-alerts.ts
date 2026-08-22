@@ -17,10 +17,8 @@ export async function ensureAlertSchema(db:D1Database){for(const schema of price
 
 async function owner(request:Request,env:AlertBindings){
   const token=request.headers.get('authorization')?.replace(/^Bearer\s+/i,'')
-  if(!token||!env.SUPABASE_URL||!env.SUPABASE_SERVICE_ROLE_KEY)return null
-  const result=await fetch(`${env.SUPABASE_URL.replace(/\/$/,'')}/auth/v1/user`,{headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,Authorization:`Bearer ${token}`}})
-  if(!result.ok)return null
-  const user=await result.json() as {id?:string};return user.id??null
+  if(token&&env.SUPABASE_URL&&env.SUPABASE_SERVICE_ROLE_KEY){const result=await fetch(`${env.SUPABASE_URL.replace(/\/$/,'')}/auth/v1/user`,{headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,Authorization:`Bearer ${token}`}});if(result.ok){const user=await result.json() as {id?:string};if(user.id)return user.id}}
+  return request.headers.get('oai-authenticated-user-id')
 }
 
 function snapshot(ticker:string,company:string,sector:string|null,payload:StoredPayload):StockSnapshot{

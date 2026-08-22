@@ -7,7 +7,7 @@ import { defaultCatalog, defaultStockSnapshots, emptyMarketOverview } from './da
 import { calculateMddProximity } from './services/metricsCalculator'
 import { createStockDataProvider, type DataMode, type RefreshState, type ValidationRow } from './services/stockData'
 import { createStrategyNotesService, type StrategyNote, type StrategyNotesService } from './services/strategyNotes'
-import { alertAction, loadAlerts, subscribePush, testPush, type AlertDashboard } from './services/priceAlertClient'
+import { alertAction, loadAlerts, subscribePush, testPush, type AlertDashboard, type PushSubscribeStage } from './services/priceAlertClient'
 import { detectPushSupport } from './services/pushSupport'
 import { getMarketHours } from './services/marketHours'
 import { analyzeQuarterlyFundamentals, opportunityScore } from './services/fundamentalsAnalysis'
@@ -27,7 +27,7 @@ type ApiTextKey = keyof ApiConfig
 type Connection = 'idle'|'testing'|'ok'|'error'
 
 const emptyConfig:ApiConfig={sheetsKey:'',sheetId:'',supabaseUrl:'',supabaseAnonKey:'',openAiKey:''}
-const APP_VERSION='v2.4.1'
+const APP_VERSION='v2.4.2'
 const tags=['가격','실적','이슈','리스크','전략']
 const periods:Period[]=['1M','3M','6M','1Y','3Y','5Y']
 const currentYear=new Date().getUTCFullYear()
@@ -179,17 +179,52 @@ function NotesPage({notes,allNotes,filter,setFilter,remove,update,connected,tab,
 
 function PriceAlertsPage({stocks,service,connected}:{stocks:StockSnapshot[];service:StrategyNotesService|null;connected:boolean}){
   const [dashboard,setDashboard]=useState<AlertDashboard|null>(null),[message,setMessage]=useState(''),[query,setQuery]=useState(''),[filter,setFilter]=useState('전체'),[busy,setBusy]=useState(false)
+  const [pushDiagnostic,setPushDiagnostic]=useState<string[]>([])
   const reload=async(init=false)=>{if(!service||!connected)return;try{if(init)await alertAction(service,{action:'init',stocks:stocks.map(stock=>({ticker:stock.ticker,company:stock.company}))});setDashboard(await loadAlerts(service))}catch(error){setMessage(error instanceof Error?error.message:'알림 정보를 불러오지 못했습니다.')}}
   // Loading is intentionally tied to the authenticated storage connection and catalog size.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(()=>{void Promise.resolve().then(()=>reload(true))},[service,connected,stocks.length])
   const act=async(body:Record<string,unknown>)=>{if(!service)return;setBusy(true);try{setDashboard(await alertAction(service,body));setMessage('설정이 저장되었습니다.')}catch(error){setMessage(error instanceof Error?error.message:'설정 저장 실패')}finally{setBusy(false)}}
-  const allow=async()=>{if(!service)return;if(!support.supported){setMessage('이 환경은 Web Push를 지원하지 않습니다. iPhone에서는 홈 화면에 설치한 앱으로 실행하세요.');return}if(support.permission==='denied'){setMessage('iPhone 설정 → 알림 → MyStockLog에서 알림을 허용해 주세요.');return}setBusy(true);try{await subscribePush(service);setMessage('휴대폰 알림이 연결되었습니다.');await reload()}catch(error){setMessage(error instanceof Error?error.message:'알림 연결 실패')}finally{setBusy(false)}}
+  const addDiagnostic=(value:string)=>setPushDiagnostic(previous=>[...previous,value])
+  const stageMessage=(stage:PushSubscribeStage)=>({
+    'service-worker-registering':'Service Worker: 등록 중',
+    'service-worker-ready':'Service Worker: ready',
+    'vapid-ready':'VAPID 공개키: 확인됨',
+    'subscription-existing':'Push subscription: 기존 구독 확인',
+    'subscription-created':'Push subscription: success',
+    'd1-saved':'D1 저장: success',
+  })[stage]
+  const allow=async()=>{
+    setPushDiagnostic(['버튼 클릭: 실행','푸시 진단: 지원 여부 확인'])
+    setMessage('권한 요청을 준비하고 있습니다.')
+    if(!support.supported){setMessage('이 환경은 Web Push를 지원하지 않습니다. iPhone에서는 홈 화면에 설치한 앱으로 실행하세요.');addDiagnostic('푸시 진단: 지원 안 됨');return}
+    addDiagnostic('푸시 진단: 지원됨')
+    if(Notification.permission==='denied'){setMessage('iPhone 설정 → 알림 → MyStockLog에서 알림을 허용해 주세요.');addDiagnostic('권한 결과: denied');return}
+    setBusy(true)
+    setMessage('권한 요청 중...')
+    addDiagnostic(`권한 요청 전: ${Notification.permission}`)
+    try{
+      // iOS requires this call to start directly inside the user's tap handler.
+      const permissionPromise=Notification.permission==='granted'?Promise.resolve<NotificationPermission>('granted'):Notification.requestPermission()
+      addDiagnostic('권한 요청: 실행')
+      const result=await permissionPromise
+      addDiagnostic(`권한 결과: ${result}`)
+      if(result==='denied'){setMessage('알림 권한이 거부되었습니다. iPhone 설정 → 알림 → MyStockLog에서 허용해 주세요.');return}
+      if(result==='default'){setMessage('알림 권한 선택이 완료되지 않았습니다. 알림 허용을 다시 눌러 선택해 주세요.');return}
+      if(!service||!connected)throw new Error('로그인 사용자 저장소 연결이 필요합니다. 설정에서 전략노트 저장소 연결을 확인해 주세요.')
+      setMessage('푸시 구독을 연결하고 있습니다...')
+      const subscribed=await subscribePush(service,stage=>addDiagnostic(stageMessage(stage)))
+      addDiagnostic(`Endpoint: ${subscribed.endpoint?'생성됨':'없음'}`)
+      setDashboard(previous=>previous?{...previous,pushSubscribed:true}:previous)
+      setMessage('휴대폰 알림이 연결되었습니다.')
+      await reload()
+    }catch(error){const detail=error instanceof Error?error.message:'알림 연결 실패';addDiagnostic(`오류: ${detail}`);setMessage(detail)}finally{setBusy(false)}
+  }
   const test=async()=>{if(!service)return;try{await testPush(service);setMessage('테스트 알림을 보냈습니다.')}catch(error){setMessage(error instanceof Error?error.message:'테스트 알림 실패')}}
   const support=detectPushSupport(),permission=support.permission==='unsupported'?'지원 안 됨':support.permission==='granted'?'허용됨':support.permission==='denied'?'차단됨':'허용 필요',settings=dashboard?.settings??[],stockMap=new Map(stocks.map(stock=>[stock.ticker,stock])),rows=settings.map(setting=>{const stock=stockMap.get(setting.ticker),analysis=stock?buildStockAnalysis(stock,stocks):null;return{setting,stock,analysis}}).filter(row=>`${row.setting.ticker} ${row.setting.company??''}`.toLowerCase().includes(query.toLowerCase())).filter(row=>filter==='전체'||filter==='보유 종목'&&row.setting.is_holding||filter==='매수 관심 알림'&&row.setting.buy_enabled||filter==='차익관리 알림'&&row.setting.sell_enabled||filter==='구간 진입'&&(row.setting.buy_state==='inside'||row.setting.sell_state==='inside')||filter==='구간 접근'&&(row.setting.buy_state==='approaching'||row.setting.sell_state==='approaching')||filter==='데이터 부족'&&(!row.analysis?.buyZone||!row.analysis?.sellZone))
   const zone=(value:PriceZone|null|undefined)=>value?`$${value.low.toFixed(2)}~${value.high.toFixed(2)}`:'데이터 부족'
   const allPaused=settings.length>0&&settings.every(item=>item.paused)
-  return <section className="alerts-page"><div className="section-head"><div><h2>가격구간 알림</h2><p>매일 정규장 마감 데이터 갱신 후 매수 관심 구간과 차익관리 구간 진입 여부를 확인합니다.</p></div></div><div className="alert-status"><span>알림 권한<strong>{permission}</strong></span><span>푸시 구독<strong>{dashboard?.pushSubscribed?'연결됨':'연결 필요'}</strong></span><span>마지막 확인<strong>{dashboard?.lastRun?.completed_at?formatUpdatedAt(dashboard.lastRun.completed_at):'—'}</strong></span><span>정규장 마감일<strong>{dashboard?.lastRun?.market_date??'—'}</strong></span><span>다음 확인<strong>06:40 KST 갱신 직후</strong></span><span>감시 종목<strong>{settings.filter(item=>!item.paused&&(item.buy_enabled||item.sell_enabled)).length}</strong></span><span>최근 알림<strong>{dashboard?.events.length??0}</strong></span></div><div className="alert-actions"><button onClick={allow} disabled={busy}><Bell/>알림 허용</button><button onClick={test} disabled={!dashboard?.pushSubscribed}>테스트 알림</button><button onClick={()=>act({action:'bulk_buy',value:true})}>전체 매수 알림 켜기</button><button onClick={()=>act({action:'bulk_buy',value:false})}>전체 매수 알림 끄기</button><button onClick={()=>act({action:'bulk_holding_sell',value:true})}>보유 종목 관리 알림 켜기</button><button onClick={()=>act({action:'pause_all',value:!allPaused})}>{allPaused?'전체 알림 다시 시작':'전체 일시정지'}</button></div>{message&&<p className="alert-message">{message}</p>}<div className="alert-filters"><label><Search/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="티커·종목명 검색"/></label><select value={filter} onChange={event=>setFilter(event.target.value)}>{['전체','보유 종목','매수 관심 알림','차익관리 알림','구간 접근','구간 진입','데이터 부족'].map(item=><option key={item}>{item}</option>)}</select></div><div className="alert-table"><div className="alert-row head"><b>종목</b><b>현재가 / 기준일</b><b>가격구간</b><b>현재 상태</b><b>설정</b></div>{rows.map(({setting,stock,analysis})=><div className="alert-row" key={setting.ticker}><div><strong>{setting.ticker}</strong><small>{setting.company}</small></div><div><strong>{fmt(stock?.price??null,'money')}</strong><small>{stock?.priceHistory.at(-1)?.date??'—'}</small></div><div><span>매수 {zone(analysis?.buyZone)}</span><span>관리 {zone(analysis?.sellZone)}</span></div><div><span>매수 {setting.buy_state}</span><span>관리 {setting.sell_state}</span><small>마지막 알림 {setting.last_alert_at?formatUpdatedAt(setting.last_alert_at):'—'}</small></div><div className="alert-checks"><label><input type="checkbox" checked={Boolean(setting.is_holding)} onChange={event=>act({action:'update',ticker:setting.ticker,field:'is_holding',value:event.target.checked})}/>보유 중</label><label><input type="checkbox" checked={Boolean(setting.buy_enabled)} onChange={event=>act({action:'update',ticker:setting.ticker,field:'buy_enabled',value:event.target.checked})}/>매수 관심 알림</label><label><input type="checkbox" checked={Boolean(setting.sell_enabled)} onChange={event=>act({action:'update',ticker:setting.ticker,field:'sell_enabled',value:event.target.checked})}/>차익관리 알림</label></div></div>)}</div><section className="recent-alerts"><h3>최근 알림</h3>{dashboard?.events.length?dashboard.events.slice(0,10).map(event=><article key={event.id}><strong>{event.title}</strong><p>{event.body}</p><small>{event.market_date} · {event.push_status}</small></article>):<p>발생한 알림이 없습니다.</p>}</section></section>
+  return <section className="alerts-page"><div className="section-head"><div><h2>가격구간 알림</h2><p>매일 정규장 마감 데이터 갱신 후 매수 관심 구간과 차익관리 구간 진입 여부를 확인합니다.</p></div></div><div className="alert-status"><span>알림 권한<strong>{permission}</strong></span><span>푸시 구독<strong>{dashboard?.pushSubscribed?'연결됨':'연결 필요'}</strong></span><span>마지막 확인<strong>{dashboard?.lastRun?.completed_at?formatUpdatedAt(dashboard.lastRun.completed_at):'—'}</strong></span><span>정규장 마감일<strong>{dashboard?.lastRun?.market_date??'—'}</strong></span><span>다음 확인<strong>06:40 KST 갱신 직후</strong></span><span>감시 종목<strong>{settings.filter(item=>!item.paused&&(item.buy_enabled||item.sell_enabled)).length}</strong></span><span>최근 알림<strong>{dashboard?.events.length??0}</strong></span></div><div className="alert-actions"><button onClick={allow} disabled={busy}><Bell/>{busy?'권한 요청 중...':'알림 허용'}</button><button onClick={test} disabled={!dashboard?.pushSubscribed}>테스트 알림</button><button onClick={()=>act({action:'bulk_buy',value:true})}>전체 매수 알림 켜기</button><button onClick={()=>act({action:'bulk_buy',value:false})}>전체 매수 알림 끄기</button><button onClick={()=>act({action:'bulk_holding_sell',value:true})}>보유 종목 관리 알림 켜기</button><button onClick={()=>act({action:'pause_all',value:!allPaused})}>{allPaused?'전체 알림 다시 시작':'전체 일시정지'}</button></div>{message&&<p className="alert-message">{message}</p>}{pushDiagnostic.length>0&&<details className="push-diagnostic" open><summary>푸시 연결 진단</summary>{pushDiagnostic.map((item,index)=><span key={`${item}-${index}`}>{item}</span>)}</details>}<div className="alert-filters"><label><Search/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="티커·종목명 검색"/></label><select value={filter} onChange={event=>setFilter(event.target.value)}>{['전체','보유 종목','매수 관심 알림','차익관리 알림','구간 접근','구간 진입','데이터 부족'].map(item=><option key={item}>{item}</option>)}</select></div><div className="alert-table"><div className="alert-row head"><b>종목</b><b>현재가 / 기준일</b><b>가격구간</b><b>현재 상태</b><b>설정</b></div>{rows.map(({setting,stock,analysis})=><div className="alert-row" key={setting.ticker}><div><strong>{setting.ticker}</strong><small>{setting.company}</small></div><div><strong>{fmt(stock?.price??null,'money')}</strong><small>{stock?.priceHistory.at(-1)?.date??'—'}</small></div><div><span>매수 {zone(analysis?.buyZone)}</span><span>관리 {zone(analysis?.sellZone)}</span></div><div><span>매수 {setting.buy_state}</span><span>관리 {setting.sell_state}</span><small>마지막 알림 {setting.last_alert_at?formatUpdatedAt(setting.last_alert_at):'—'}</small></div><div className="alert-checks"><label><input type="checkbox" checked={Boolean(setting.is_holding)} onChange={event=>act({action:'update',ticker:setting.ticker,field:'is_holding',value:event.target.checked})}/>보유 중</label><label><input type="checkbox" checked={Boolean(setting.buy_enabled)} onChange={event=>act({action:'update',ticker:setting.ticker,field:'buy_enabled',value:event.target.checked})}/>매수 관심 알림</label><label><input type="checkbox" checked={Boolean(setting.sell_enabled)} onChange={event=>act({action:'update',ticker:setting.ticker,field:'sell_enabled',value:event.target.checked})}/>차익관리 알림</label></div></div>)}</div><section className="recent-alerts"><h3>최근 알림</h3>{dashboard?.events.length?dashboard.events.slice(0,10).map(event=><article key={event.id}><strong>{event.title}</strong><p>{event.body}</p><small>{event.market_date} · {event.push_status}</small></article>):<p>발생한 알림이 없습니다.</p>}</section></section>
 }
 
 function HybridSettingsPage({config,setConfig,save,toss,google,supabase,stocks,groups,message}:{config:ApiConfig;setConfig:(v:ApiConfig)=>void;save:()=>void;toss:Connection;google:Connection;supabase:Connection;stocks:StockSnapshot[];groups:MarketCatalog['groups'];email:string;setEmail:(v:string)=>void;password:string;setPassword:(v:string)=>void;authUser:string|null;authenticate:(m:'signin'|'signup')=>void;signOut:()=>void;message:string}){

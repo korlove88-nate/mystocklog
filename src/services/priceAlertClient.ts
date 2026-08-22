@@ -9,11 +9,28 @@ export const loadAlerts=(service:StrategyNotesService)=>authFetch(service,'/api/
 export const alertAction=(service:StrategyNotesService,body:Record<string,unknown>)=>authFetch(service,'/api/alerts',{method:'POST',body:JSON.stringify(body)}) as Promise<AlertDashboard>
 
 const decode=(value:string)=>{const padding='='.repeat((4-value.length%4)%4),base64=(value+padding).replace(/-/g,'+').replace(/_/g,'/'),raw=atob(base64);return Uint8Array.from([...raw].map(char=>char.charCodeAt(0)))}
-export async function subscribePush(service:StrategyNotesService){
+export type PushSubscribeStage='service-worker-registering'|'service-worker-ready'|'vapid-ready'|'subscription-existing'|'subscription-created'|'d1-saved'
+export type PushSubscribeResult={subscription:PushSubscription;endpoint:string;created:boolean;d1Saved:true}
+
+export async function subscribePush(service:StrategyNotesService,onStage?:(stage:PushSubscribeStage)=>void):Promise<PushSubscribeResult>{
   if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))throw new Error('이 기기는 Web Push를 지원하지 않습니다.')
-  const permission=await Notification.requestPermission();if(permission!=='granted')throw new Error('알림 권한이 허용되지 않았습니다.')
-  await navigator.serviceWorker.register('/sw.js');const ready=await navigator.serviceWorker.ready,config=await authFetch(service,'/api/push/config') as {publicKey?:string;configured?:boolean};if(!config.configured||!config.publicKey)throw new Error('서버 Push 키 설정이 필요합니다.')
-  const existing=await ready.pushManager.getSubscription(),subscription=existing??await ready.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decode(config.publicKey)})
-  await authFetch(service,'/api/push/subscribe',{method:'POST',body:JSON.stringify(subscription.toJSON())});return subscription
+  if(Notification.permission!=='granted')throw new Error('알림 권한을 먼저 허용해 주세요.')
+  onStage?.('service-worker-registering')
+  await navigator.serviceWorker.register('/sw.js')
+  const ready=await navigator.serviceWorker.ready
+  onStage?.('service-worker-ready')
+  const configResult=await fetch('/api/push/config',{headers:{Accept:'application/json'}})
+  const config=await configResult.json() as {publicKey?:string;configured?:boolean;error?:string}
+  if(!configResult.ok)throw new Error(config.error??`Push 설정 확인 실패 ${configResult.status}`)
+  if(!config.configured||!config.publicKey)throw new Error('운영 VAPID 공개키가 클라이언트에 전달되지 않았습니다.')
+  onStage?.('vapid-ready')
+  const existing=await ready.pushManager.getSubscription()
+  const subscription=existing??await ready.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decode(config.publicKey)})
+  if(!subscription.endpoint)throw new Error('Push 구독 endpoint가 생성되지 않았습니다.')
+  onStage?.(existing?'subscription-existing':'subscription-created')
+  const saved=await authFetch(service,'/api/push/subscribe',{method:'POST',body:JSON.stringify(subscription.toJSON())}) as {ok?:boolean}
+  if(!saved.ok)throw new Error('Push 구독을 서버에 저장하지 못했습니다.')
+  onStage?.('d1-saved')
+  return{subscription,endpoint:subscription.endpoint,created:!existing,d1Saved:true}
 }
 export const testPush=(service:StrategyNotesService)=>authFetch(service,'/api/push/test',{method:'POST',body:'{}'})

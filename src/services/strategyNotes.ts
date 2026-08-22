@@ -10,7 +10,7 @@ const mapNote = (row: Record<string, unknown>): StrategyNote => ({
 
 export class StrategyNotesService {
   readonly client: SupabaseClient
-  constructor(url: string, anonKey: string) { this.client = createClient(url, anonKey, {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}) }
+  constructor(readonly url: string, readonly anonKey: string) { this.client = createClient(url, anonKey, {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}) }
   async user(): Promise<User|null> { return (await this.client.auth.getUser()).data.user ?? null }
   async accessToken(): Promise<string|null> { return (await this.client.auth.getSession()).data.session?.access_token ?? null }
   async ensureAnonymousUser(): Promise<User> {

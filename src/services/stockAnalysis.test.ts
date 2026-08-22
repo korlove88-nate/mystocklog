@@ -1,0 +1,22 @@
+import {describe,expect,it} from 'vitest'
+import type {HistoricalPrice,StockSnapshot} from '../types'
+import {buildStockAnalysis,calculatePriceZones,opportunityInterpretation,trendAnalysis,volumeStatistics} from './stockAnalysis'
+
+const history=(count=240,start=100,step=.2,volume=1000):HistoricalPrice[]=>Array.from({length:count},(_,index)=>{const close=start+index*step,date=new Date(Date.UTC(2025,0,2+index));return{date:date.toISOString().slice(0,10),open:close-.5,high:close+1,low:close-1,close,adjustedClose:close,volume:index===count-1?volume*1.6:volume}})
+const stock=(prices=history()):StockSnapshot=>{const price=prices.at(-1)?.close??null;return{ticker:'TEST',company:'Test',sector:'Tech',marketCap:null,pe:20,eps:5,price,changePercent:.01,ath:null,high52:price?price*1.1:null,drawdown52:-.09,low52:price?price*.75:null,atl:null,mdd:{2024:-.2,2025:-.25,2026:-.18},yearOpen:100,ytdReturn:.2,return1m:.02,return3m:.05,return6m:.1,return1y:.2,return3y:null,return5y:null,ma20:price?price-2:null,ma60:price?price-4:null,ma120:price?price-8:null,ma200:price?price-12:null,historyComplete:false,priceHistory:prices,dataSource:'toss',priceStability:'안정',fundamentalsHistory:[]}}
+
+describe('stock technical analysis',()=>{
+  it('detects all MA above with increased rising volume',()=>{const result=buildStockAnalysis(stock(),[stock()]);expect(result.trend).toMatch(/상승/);expect(result.volumeState).toBe('거래 집중');expect(result.priceVolumeState).toContain('가격 상승')})
+  it('detects all MA below with falling direction',()=>{const prices=history(240,200,-.3,1000);prices.at(-1)!.volume=1800;const result=trendAnalysis(prices,prices.at(-1)!.close);expect(result.trend).toMatch(/하락/)})
+  it('detects short recovery above MA20 and MA60',()=>{const result=trendAnalysis(history(),147.8);expect(result.ma.ma20.difference).not.toBeNull();expect(result.trend).toMatch(/상승|방향/)})
+  it('classifies ordered and reverse ordered MA arrays',()=>{expect(trendAnalysis(history(),200).arrangement).toBe('정배열');expect(trendAnalysis(history(240,200,-.2),100).arrangement).toBe('역배열')})
+  it('does not calculate volume strength under 20 prior days',()=>expect(volumeStatistics(history(20)).ratio).toBeNull())
+  it('excludes negative EPS from data completeness',()=>{const sample=stock();sample.eps=-1;expect(buildStockAnalysis(sample,[sample]).missing.some(item=>item.includes('EPS'))).toBe(true)})
+  it('reports insufficient 52 week data',()=>{const sample=stock(history(100));sample.return1y=null;expect(buildStockAnalysis(sample,[sample]).missing).toContain('52주 데이터 부족')})
+  it('recognizes a buy interest zone',()=>{const sample=stock();sample.ma120=120;sample.ma200=121;sample.low52=119;sample.price=125;expect(calculatePriceZones(sample).buyZone).not.toBeNull()})
+  it('describes a downside break below a buy zone',()=>{const sample=stock();sample.price=110;sample.low52=119;sample.high52=150;sample.mdd={2024:-.2,2025:-.2,2026:-.2};sample.ma60=null;sample.ma120=null;sample.ma200=null;expect(calculatePriceZones(sample).buyZone?.relation).toContain('하향 이탈')})
+  it('recognizes an approaching profit management zone',()=>{const sample=stock();sample.price=140;sample.high52=150;sample.ath=151;expect(calculatePriceZones(sample).sellZone).not.toBeNull()})
+  it('strengthens a resistance break when volume expands',()=>{const prices=history();prices.at(-1)!.volume=1800;expect(buildStockAnalysis(stock(prices),[stock(prices)]).priceVolumeState).toContain('거래량 증가')})
+  it('limits analysis when buy and sell zones overlap',()=>{const sample=stock();sample.price=125;sample.low52=123;sample.ma120=124;sample.high52=126;sample.ath=127;const zones=calculatePriceZones(sample);expect(!(zones.buyZone&&zones.sellZone&&zones.buyZone.high>=zones.sellZone.low)).toBe(true)})
+  it('uses requested opportunity interpretation bands',()=>{expect(opportunityInterpretation(79).label).toBe('관찰 우선');expect(opportunityInterpretation(45).label).toBe('일부 충족');expect(opportunityInterpretation(20).label).toBe('매력 제한')})
+})

@@ -1,6 +1,6 @@
 {
   "name": "mystocklog",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -17,6 +17,7 @@
     "refresh:daily": "node --env-file=.env scripts/refresh-and-sync.mjs"
   },
   "dependencies": {
+    "@block65/webcrypto-web-push": "^1.0.2",
     "@supabase/supabase-js": "^2.112.3",
     "lucide-react": "latest",
     "react": "19.2.6",

@@ -1,0 +1,69 @@
+import {buildPushPayload,type PushSubscription} from '@block65/webcrypto-web-push'
+import {priceAlertSchemas} from '../db/schema'
+import {calculateDrawdown,calculateMetrics,calculatePriceStability} from '../src/services/metricsCalculator'
+import {buildStockAnalysis} from '../src/services/stockAnalysis'
+import {alertReason,classifyZone,type AlertReason,type ZoneKind,type ZoneState} from '../src/services/priceAlerts'
+import type {MarketCatalog,StockSnapshot} from '../src/types'
+import type {StoredPayload} from './market-data'
+
+export type AlertBindings={SUPABASE_URL?:string;SUPABASE_SERVICE_ROLE_KEY?:string;VAPID_PUBLIC_KEY?:string;VAPID_PRIVATE_KEY?:string;VAPID_SUBJECT?:string}
+type AlertRow={owner_id:string;ticker:string;company:string|null;active:number;is_holding:number;buy_enabled:number;sell_enabled:number;sell_manually_disabled:number;approach_enabled:number;approach_percent:number;buy_state:ZoneState;sell_state:ZoneState;previous_price:number|null;previous_buy_low:number|null;previous_buy_high:number|null;previous_sell_low:number|null;previous_sell_high:number|null;last_market_date:string|null;last_checked_at:string|null;last_alert_at:string|null;paused:number}
+
+const json=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store'}})
+const valid=(value:unknown):value is number=>typeof value==='number'&&Number.isFinite(value)
+const iso=()=>new Date().toISOString()
+
+export async function ensureAlertSchema(db:D1Database){for(const schema of priceAlertSchemas)await db.prepare(schema).run()}
+
+async function owner(request:Request,env:AlertBindings){
+  const token=request.headers.get('authorization')?.replace(/^Bearer\s+/i,'')
+  if(!token||!env.SUPABASE_URL||!env.SUPABASE_SERVICE_ROLE_KEY)return null
+  const result=await fetch(`${env.SUPABASE_URL.replace(/\/$/,'')}/auth/v1/user`,{headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,Authorization:`Bearer ${token}`}})
+  if(!result.ok)return null
+  const user=await result.json() as {id?:string};return user.id??null
+}
+
+function snapshot(ticker:string,company:string,sector:string|null,payload:StoredPayload):StockSnapshot{
+  const year=Number((payload.quote?.marketDate??payload.historicalPrices.at(-1)?.date??new Date().toISOString()).slice(0,4)),metrics=calculateMetrics(payload.historicalPrices,payload.quote?.price??null,year,payload.historyComplete),price=payload.quote?.price??payload.historicalPrices.at(-1)?.close??null
+  return{ticker,company,sector,marketCap:payload.fundamentals?.marketCap??null,pe:payload.fundamentals?.pe??null,eps:payload.fundamentals?.eps??null,price,changePercent:payload.quote?.changePercent??null,...metrics,drawdown52:calculateDrawdown(price,metrics.high52),historyComplete:payload.historyComplete,priceHistory:payload.historicalPrices,dataSource:price!==null?'toss':'reference',priceStability:calculatePriceStability(payload.historicalPrices,metrics.ma20,metrics.ma60),sources:payload.sources}
+}
+
+async function pushOne(env:AlertBindings,row:{endpoint:string;p256dh:string;auth:string},data:unknown){
+  if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY||!env.VAPID_SUBJECT)throw new Error('VAPID_NOT_CONFIGURED')
+  const subscription:PushSubscription={endpoint:row.endpoint,expirationTime:null,keys:{p256dh:row.p256dh,auth:row.auth}}
+  const payload=await buildPushPayload({data:JSON.stringify(data),options:{ttl:86400}},subscription,{subject:env.VAPID_SUBJECT,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY})
+  return fetch(row.endpoint,{...payload,body:payload.body as unknown as BodyInit})
+}
+
+async function dispatchOwner(db:D1Database,env:AlertBindings,ownerId:string,event:{id:string;title:string;body:string;ticker:string;type:string}){
+  const subscriptions=await db.prepare('SELECT id,endpoint,p256dh,auth FROM push_subscriptions WHERE owner_id=?1 AND active=1').bind(ownerId).all<{id:string;endpoint:string;p256dh:string;auth:string}>();let sent=0,lastError:string|null=null
+  for(const subscription of subscriptions.results)try{const result=await pushOne(env,subscription,{...event,url:`/?page=stock&ticker=${encodeURIComponent(event.ticker)}&tab=overview&alert=${event.id}`});if(result.ok)sent+=1;else{lastError=`Push ${result.status}`;if(result.status===404||result.status===410)await db.prepare('UPDATE push_subscriptions SET active=0,updated_at=?1 WHERE id=?2 AND owner_id=?3').bind(iso(),subscription.id,ownerId).run()}}catch(error){lastError=error instanceof Error?error.message:'Push failed'}
+  return{sent,error:lastError}
+}
+
+function notification(kind:ZoneKind,ticker:string,price:number,low:number,high:number,reason:AlertReason,analysis:ReturnType<typeof buildStockAnalysis>){const zoneLabel=kind==='buy'?'매수 관심 구간':'차익관리 구간',title=`${ticker} ${reason==='zone_recalculated_around_price'?zoneLabel+' 포함':zoneLabel+' 진입'}`,body=reason==='zone_recalculated_around_price'?`분석 기준 변경으로 현재가 $${price.toFixed(2)}이 $${low.toFixed(2)}~${high.toFixed(2)}에 포함됐습니다.`:`종가 $${price.toFixed(2)}이 ${zoneLabel.replace(' 구간','')} 구간 $${low.toFixed(2)}~${high.toFixed(2)}에 진입했습니다.`;return{title,body:`${body} ${analysis.opportunity.score??'—'}점 · ${analysis.trend}`}}
+
+export async function evaluatePriceAlerts(db:D1Database,env:AlertBindings,payloads:Record<string,StoredPayload>,catalog:MarketCatalog,marketDate:string|null){
+  await ensureAlertSchema(db);if(!marketDate)return{checked:0,events:0,skipped:'no_market_date'}
+  const existingRun=await db.prepare('SELECT status FROM alert_evaluation_runs WHERE market_date=?1').bind(marketDate).first<{status:string}>();if(existingRun?.status==='complete')return{checked:0,events:0,skipped:'already_complete'}
+  const started=iso();await db.prepare("INSERT INTO alert_evaluation_runs (market_date,started_at,status) VALUES (?1,?2,'running') ON CONFLICT(market_date) DO UPDATE SET started_at=excluded.started_at,status='running',error=NULL").bind(marketDate,started).run()
+  const stockMap=new Map(catalog.stocks.map(item=>[item.ticker,item])),stocks=Object.entries(payloads).map(([ticker,payload])=>snapshot(ticker,stockMap.get(ticker)?.company??ticker,stockMap.get(ticker)?.sector??null,payload)),analyses=new Map(stocks.map(stock=>[stock.ticker,buildStockAnalysis(stock,stocks)])),settings=await db.prepare('SELECT * FROM stock_alert_settings WHERE active=1 AND paused=0').all<AlertRow>();let checked=0,events=0
+  for(const setting of settings.results){const analysis=analyses.get(setting.ticker),stock=stocks.find(item=>item.ticker===setting.ticker);if(!analysis||!stock||!valid(stock.price)||analysis.asOf!==marketDate)continue;checked+=1
+    for(const kind of ['buy','sell'] as const){const enabled=kind==='buy'?setting.buy_enabled:setting.sell_enabled,zone=kind==='buy'?analysis.buyZone:analysis.sellZone,previousState=kind==='buy'?setting.buy_state:setting.sell_state,currentState=classifyZone(kind,stock.price,zone?.low??null,zone?.high??null,setting.approach_percent),previous={price:setting.previous_price,low:kind==='buy'?setting.previous_buy_low:setting.previous_sell_low,high:kind==='buy'?setting.previous_buy_high:setting.previous_sell_high},current={price:stock.price,low:zone?.low??null,high:zone?.high??null};const priorEntry=await db.prepare('SELECT id FROM price_alert_events WHERE owner_id=?1 AND ticker=?2 AND alert_type=?3 LIMIT 1').bind(setting.owner_id,setting.ticker,kind).first();const reason=enabled&&zone?alertReason(previousState,currentState,previous,current,Boolean(priorEntry)):null
+      if(reason&&valid(zone!.low)&&valid(zone!.high)){const id=crypto.randomUUID(),copy=notification(kind,setting.ticker,stock.price,zone!.low,zone!.high,reason,analysis),eventTime=iso();try{await db.prepare("INSERT INTO price_alert_events (id,owner_id,ticker,alert_type,event_reason,market_date,close_price,zone_low,zone_high,opportunity_score,trend,volume_ratio,title,body,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)").bind(id,setting.owner_id,setting.ticker,kind,reason,marketDate,stock.price,zone!.low,zone!.high,analysis.opportunity.score,analysis.trend,analysis.volumeRatio,copy.title,copy.body,eventTime).run();const pushed=await dispatchOwner(db,env,setting.owner_id,{id,...copy,ticker:setting.ticker,type:kind});await db.prepare('UPDATE price_alert_events SET push_status=?1,push_error=?2 WHERE id=?3').bind(pushed.sent?'sent':pushed.error?'failed':'no_subscription',pushed.error,id).run();await db.prepare('UPDATE stock_alert_settings SET last_alert_at=?1 WHERE owner_id=?2 AND ticker=?3').bind(eventTime,setting.owner_id,setting.ticker).run();events+=1}catch(error){if(!(error instanceof Error&&error.message.includes('UNIQUE')))throw error}}
+      await db.prepare(`UPDATE stock_alert_settings SET ${kind}_state=?1,updated_at=?2 WHERE owner_id=?3 AND ticker=?4`).bind(currentState,iso(),setting.owner_id,setting.ticker).run()
+    }
+    await db.prepare('UPDATE stock_alert_settings SET previous_price=?1,previous_buy_low=?2,previous_buy_high=?3,previous_sell_low=?4,previous_sell_high=?5,last_market_date=?6,last_checked_at=?7,updated_at=?7 WHERE owner_id=?8 AND ticker=?9').bind(stock.price,analysis.buyZone?.low??null,analysis.buyZone?.high??null,analysis.sellZone?.low??null,analysis.sellZone?.high??null,marketDate,iso(),setting.owner_id,setting.ticker).run()
+  }
+  await db.prepare("UPDATE alert_evaluation_runs SET completed_at=?1,status='complete',checked_count=?2,event_count=?3 WHERE market_date=?4").bind(iso(),checked,events,marketDate).run();return{checked,events}
+}
+
+async function initSettings(db:D1Database,ownerId:string,stocks:{ticker:string;company:string}[]){const now=iso(),sql="INSERT OR IGNORE INTO stock_alert_settings (owner_id,ticker,company,created_at,updated_at) VALUES (?1,?2,?3,?4,?4)";for(const item of stocks)await db.prepare(sql).bind(ownerId,item.ticker,item.company,now).run()}
+
+export async function handleAlertApi(request:Request,db:D1Database,env:AlertBindings){await ensureAlertSchema(db);const ownerId=await owner(request,env);if(!ownerId)return json({error:'Unauthorized'},401);const url=new URL(request.url),path=url.pathname
+  if(path==='/api/push/config'&&request.method==='GET')return json({publicKey:env.VAPID_PUBLIC_KEY??null,configured:Boolean(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY&&env.VAPID_SUBJECT)})
+  if(path==='/api/push/subscribe'&&request.method==='POST'){const body=await request.json() as {endpoint?:string;keys?:{p256dh?:string;auth?:string}};if(!body.endpoint||!body.keys?.p256dh||!body.keys.auth)return json({error:'Invalid subscription'},400);const id=crypto.randomUUID(),now=iso();await db.prepare("INSERT INTO push_subscriptions (id,owner_id,endpoint,p256dh,auth,user_agent,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?7) ON CONFLICT(owner_id,endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,active=1,updated_at=excluded.updated_at").bind(id,ownerId,body.endpoint,body.keys.p256dh,body.keys.auth,request.headers.get('user-agent'),now).run();return json({ok:true})}
+  if(path==='/api/push/test'&&request.method==='POST'){const result=await dispatchOwner(db,env,ownerId,{id:'test',title:'MyStockLog 테스트 알림',body:'가격구간 알림이 정상적으로 연결되었습니다.',ticker:'',type:'test'});return json({ok:result.sent>0,...result},result.sent?200:422)}
+  if(path==='/api/alerts'&&request.method==='POST'){const body=await request.json() as {action?:string;stocks?:{ticker:string;company:string}[];ticker?:string;field?:string;value?:boolean};if(body.action==='init'){await initSettings(db,ownerId,body.stocks??[])}else if(body.action==='update'&&body.ticker&&['is_holding','buy_enabled','sell_enabled','paused'].includes(body.field??'')){const field=body.field!,value=body.value?1:0;if(field==='is_holding'&&value)await db.prepare('UPDATE stock_alert_settings SET is_holding=1,sell_enabled=CASE WHEN sell_manually_disabled=0 THEN 1 ELSE sell_enabled END,updated_at=?1 WHERE owner_id=?2 AND ticker=?3').bind(iso(),ownerId,body.ticker).run();else await db.prepare(`UPDATE stock_alert_settings SET ${field}=?1,${field==='sell_enabled'&&!value?'sell_manually_disabled=1,':''}updated_at=?2 WHERE owner_id=?3 AND ticker=?4`).bind(value,iso(),ownerId,body.ticker).run()}else if(body.action==='bulk_buy')await db.prepare('UPDATE stock_alert_settings SET buy_enabled=?1,updated_at=?2 WHERE owner_id=?3 AND active=1').bind(body.value?1:0,iso(),ownerId).run();else if(body.action==='bulk_holding_sell')await db.prepare('UPDATE stock_alert_settings SET sell_enabled=?1,updated_at=?2 WHERE owner_id=?3 AND is_holding=1 AND active=1').bind(body.value?1:0,iso(),ownerId).run();else if(body.action==='pause_all')await db.prepare('UPDATE stock_alert_settings SET paused=?1,updated_at=?2 WHERE owner_id=?3').bind(body.value?1:0,iso(),ownerId).run();else if(body.action==='read_all')await db.prepare('UPDATE price_alert_events SET read_at=?1 WHERE owner_id=?2 AND read_at IS NULL').bind(iso(),ownerId).run();else return json({error:'Invalid action'},400)}
+  const settings=await db.prepare('SELECT ticker,company,is_holding,buy_enabled,sell_enabled,approach_enabled,approach_percent,buy_state,sell_state,last_market_date,last_checked_at,last_alert_at,paused FROM stock_alert_settings WHERE owner_id=?1 AND active=1 ORDER BY ticker').bind(ownerId).all(),events=await db.prepare('SELECT id,ticker,alert_type,event_reason,market_date,close_price,zone_low,zone_high,title,body,read_at,push_status,created_at FROM price_alert_events WHERE owner_id=?1 ORDER BY created_at DESC LIMIT 100').bind(ownerId).all(),subscriptions=await db.prepare('SELECT COUNT(*) AS count FROM push_subscriptions WHERE owner_id=?1 AND active=1').bind(ownerId).first<{count:number}>(),run=await db.prepare('SELECT market_date,completed_at,status,checked_count,event_count FROM alert_evaluation_runs ORDER BY market_date DESC LIMIT 1').first();return json({settings:settings.results,events:events.results,pushSubscribed:(subscriptions?.count??0)>0,lastRun:run??null,nextCheck:'매일 06:40 KST 데이터 갱신 직후'})
+}

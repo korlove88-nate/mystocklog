@@ -2,6 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { handleMarketData, handleScheduledRefresh } from "./market-data";
+import { handleAlertApi } from "./price-alerts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -15,6 +16,9 @@ interface Env {
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   MARKET_SYNC_TOKEN?: string;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -41,6 +45,10 @@ const worker = {
 
     if (url.pathname === "/api/market-data") {
       return handleMarketData(request, env.DB, env);
+    }
+
+    if (url.pathname === "/api/alerts" || url.pathname.startsWith("/api/push/")) {
+      return handleAlertApi(request, env.DB, env);
     }
 
     if (url.pathname === "/_vinext/image") {

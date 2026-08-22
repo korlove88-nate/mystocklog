@@ -7,6 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: '미국주식 비교와 전략 기록을 위한 개인 투자 대시보드',
     start_url: '/',
     display: 'standalone',
+    scope: '/',
+    id: '/',
     background_color: '#0b1017',
     theme_color: '#0b1017',
     icons: [

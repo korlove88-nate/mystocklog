@@ -12,6 +12,7 @@ export class StrategyNotesService {
   readonly client: SupabaseClient
   constructor(url: string, anonKey: string) { this.client = createClient(url, anonKey, {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}) }
   async user(): Promise<User|null> { return (await this.client.auth.getUser()).data.user ?? null }
+  async accessToken(): Promise<string|null> { return (await this.client.auth.getSession()).data.session?.access_token ?? null }
   async ensureAnonymousUser(): Promise<User> {
     const {data:{session},error:sessionError}=await this.client.auth.getSession()
     if(sessionError)throw sessionError

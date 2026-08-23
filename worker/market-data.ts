@@ -109,6 +109,11 @@ export async function handleScheduledRefresh(db:D1Database,bindings:MarketBindin
 export async function handleMarketData(request:Request,db:D1Database,bindings:SyncBindings={}):Promise<Response>{
   const url=new URL(request.url);await ensureSchema(db)
   if(request.method==='POST'&&url.searchParams.get('sync')==='1')return importTossSync(request,db,bindings)
+  if(url.searchParams.get('sec')==='1'&&request.headers.get('x-refresh-market-data')==='1'){
+    const symbols=(url.searchParams.get('symbols')??'').split(',').map(value=>value.trim().toUpperCase()).filter(Boolean)
+    if(!symbols.length||symbols.length>3||symbols.some(symbol=>!validSymbol(symbol)))return response({error:'SEC batch must contain 1-3 valid symbols'},'SEC-INVALID',400)
+    const refresh=await refreshSecFinancials(db,symbols,bindings,symbols.length),payloads:Record<string,StoredPayload>={};for(const symbol of symbols){const stored=await loadStored(db,symbol);if(stored.payload)payloads[symbol]=storedView(stored.payload)}await withCompanyQuality(db,payloads);return response({refresh,payloads},refresh.failed?'SEC-PARTIAL':'SEC-REFRESH',refresh.checked?200:502)
+  }
   if(url.searchParams.get('status')==='1'){const meta=await loadDashboardMeta(db);return Response.json({tossConfigured:Boolean(tossCredentials(bindings)),googleSheetsConfigured:googleConfigured(bindings),supabaseConfigured:supabaseConfigured(bindings),durableStorage:true,lastRefresh:meta.lastRefresh??null,marketOverview:overviewStatus(meta.marketOverview)})}
   if(url.searchParams.get('dashboard')==='1'){
     const force=request.headers.get('x-refresh-market-data')==='1';if(force){const refreshed=await refreshDashboard(db,bindings,'manual',true);await withFundamentalsHistory(db,refreshed.payloads);await withCompanyQuality(db,refreshed.payloads);return response(refreshed,refreshed.refresh.status==='success'?'DASHBOARD-REFRESH':'DASHBOARD-PARTIAL',refreshed.refresh.status==='failed'?502:200)}

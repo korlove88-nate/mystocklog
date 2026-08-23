@@ -35,3 +35,14 @@ export function evaluateCompanyQuality(quarters:SecFinancialQuarter[]):CompanyQu
   const grade=score===null?'평가 데이터 부족':score>=90?'매우 우수':score>=80?'우수':score>=70?'양호':score>=60?'보통':score>=50?'주의':'취약'
   return{score,grade,completeness,status:score===null?'insufficient':'ready',summary:score===null?'SEC 공식 재무데이터가 더 필요합니다.':`가격과 무관한 SEC 재무데이터 기준 기업 상태는 ${grade}입니다.`,asOf:latest?.periodEnd??null,source:'SEC',axes,metrics:{revenueYoy,epsYoy,operatingMargin,netMargin,roe,debtToEquity,cashToDebt,freeCashFlow:latest?.freeCashFlow??null,revenueDirection,epsDirection,operatingIncomeDirection,fcfDirection}}
 }
+
+export function explainCompanyQuality(evaluation:CompanyQualityEvaluation,latest:SecFinancialQuarter){
+  const {score,metrics}=evaluation
+  const headline=score===null?'공식 재무데이터가 더 쌓여야 기업 상태를 판단할 수 있습니다.':score>=80?'성장성·수익성·재무상태가 전반적으로 탄탄한 편입니다.':score>=70?'전반적으로 양호하지만 일부 약한 항목을 함께 확인해야 합니다.':score>=60?'좋은 항목과 약한 항목이 섞여 있어 세부 확인이 필요합니다.':'현재 재무지표에서 수익성 또는 현금흐름 부담이 확인됩니다.'
+  const revenue=metrics.revenueYoy,eps=metrics.epsYoy
+  const growth=typeof revenue!=='number'||typeof eps!=='number'?'전년 동기 비교 데이터가 부족해 성장 속도는 아직 판단하기 어렵습니다.':revenue>.05&&eps>.05?'매출과 주당이익(EPS)이 함께 늘어 성장의 질이 좋은 흐름입니다.':revenue>.05&&eps<=0?'매출은 늘었지만 EPS는 감소했습니다. 외형 성장만큼 이익이 따라오는지 확인해야 합니다.':revenue<=0&&eps>0?'매출은 줄었지만 EPS는 늘었습니다. 비용 절감 등으로 이익이 개선됐을 수 있습니다.':'매출과 EPS가 전년보다 줄어 실적 둔화가 나타납니다.'
+  const operatingMargin=metrics.operatingMargin,netMargin=metrics.netMargin
+  const profitability=typeof operatingMargin!=='number'||typeof netMargin!=='number'?'이익률 데이터가 부족해 수익성을 판단하기 어렵습니다.':operatingMargin>=.2&&netMargin>=.15?'매출에서 실제 이익으로 남는 비율이 높은 편입니다.':operatingMargin>=.1&&netMargin>=.08?'수익성은 보통 수준이며 개선 여부를 이어서 확인할 필요가 있습니다.':'매출 대비 남는 이익이 적어 수익성이 약한 편입니다.'
+  const cashFlow=typeof latest.freeCashFlow!=='number'?'잉여현금흐름(FCF) 계산에 필요한 데이터가 부족합니다.':latest.freeCashFlow>0?'영업활동과 투자지출 후에도 현금이 남아 현금창출력이 양수입니다.':'영업현금흐름에서 투자지출을 뺀 FCF가 음수라, 현재는 투자 후 남는 현금이 부족합니다.'
+  return{headline,points:[growth,profitability,cashFlow]}
+}

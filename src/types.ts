@@ -55,6 +55,20 @@ export interface StockSnapshot {
   priceStability?: PriceStability | null;
   sources?: StockDataSources;
   fundamentalsHistory?: FundamentalHistoryPoint[];
+  financialQuarters?: SecFinancialQuarter[];
+  companyQuality?: CompanyQualityEvaluation | null;
 }
 export type PriceStability = '하락 지속' | '관찰' | '안정 시도' | '안정'
 export type FundamentalHistoryPoint = { snapshotDate:string; eps:MetricValue; per:MetricValue }
+export type SecFinancialQuarter = {
+  ticker:string; cik:string; fiscalYear:number; fiscalQuarter:'Q1'|'Q2'|'Q3'|'Q4'; periodEnd:string; filedAt:string; accessionNumber:string;
+  revenue:MetricValue; operatingIncome:MetricValue; netIncome:MetricValue; epsBasic:MetricValue; epsDiluted:MetricValue;
+  operatingCashFlow:MetricValue; capex:MetricValue; freeCashFlow:MetricValue; cash:MetricValue; totalAssets:MetricValue;
+  totalLiabilities:MetricValue; totalDebt:MetricValue; stockholdersEquity:MetricValue; source:'SEC';
+}
+export type CompanyQualityAxis = { key:'growth'|'profitability'|'health'|'direction'; label:string; score:MetricValue; max:number; completeness:number; interpretation:string }
+export type CompanyQualityEvaluation = {
+  score:MetricValue; grade:string; completeness:number; status:'ready'|'insufficient'; summary:string; asOf:string|null; source:'SEC';
+  axes:CompanyQualityAxis[];
+  metrics:{revenueYoy:MetricValue;epsYoy:MetricValue;operatingMargin:MetricValue;netMargin:MetricValue;roe:MetricValue;debtToEquity:MetricValue;cashToDebt:MetricValue;freeCashFlow:MetricValue;revenueDirection:string;epsDirection:string;operatingIncomeDirection:string;fcfDirection:string};
+}

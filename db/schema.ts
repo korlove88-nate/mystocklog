@@ -25,3 +25,10 @@ export const priceAlertSchemas = [
   `CREATE INDEX IF NOT EXISTS idx_alert_events_owner ON price_alert_events(owner_id,created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_strategy_notes_owner ON strategy_notes_d1(owner_id,updated_at DESC)`,
 ] as const
+
+export const backtestSchemas = [
+  `CREATE TABLE IF NOT EXISTS backtest_runs (id TEXT PRIMARY KEY NOT NULL, run_date TEXT NOT NULL, phase TEXT NOT NULL, title TEXT NOT NULL, algorithm_version TEXT NOT NULL, period_start TEXT, period_end TEXT, universe TEXT NOT NULL, config_json TEXT NOT NULL, summary_json TEXT NOT NULL, conclusion TEXT NOT NULL, created_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS backtest_sections (id TEXT PRIMARY KEY NOT NULL, run_id TEXT NOT NULL, parent_id TEXT, section_type TEXT NOT NULL, title TEXT NOT NULL, summary TEXT NOT NULL, report_data_json TEXT NOT NULL, sort_order INTEGER NOT NULL, FOREIGN KEY(run_id) REFERENCES backtest_runs(id))`,
+  `CREATE INDEX IF NOT EXISTS idx_backtest_runs_date ON backtest_runs(run_date DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_backtest_sections_run_sort ON backtest_sections(run_id,sort_order)`,
+] as const

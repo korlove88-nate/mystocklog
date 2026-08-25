@@ -3,6 +3,7 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 import { handleMarketData, handleScheduledRefresh } from "./market-data";
 import { handleAlertApi } from "./price-alerts";
+import { importBacktest, listBacktests } from './backtests';
 
 interface Env {
   ASSETS: Fetcher;
@@ -50,6 +51,10 @@ const worker = {
 
     if (url.pathname === "/api/alerts" || url.pathname === "/api/strategy-notes" || url.pathname.startsWith("/api/push/")) {
       return handleAlertApi(request, env.DB, env);
+    }
+
+    if (url.pathname === '/api/backtests') {
+      return request.method === 'GET' ? Response.json({runs:await listBacktests(env.DB)},{headers:{'Cache-Control':'private, no-store'}}) : importBacktest(request,env.DB,env.MARKET_SYNC_TOKEN);
     }
 
     if (url.pathname === "/_vinext/image") {

@@ -9,4 +9,5 @@ dist/
 .DS_Store
 coverage/
 .automation-logs/
+backtest/results/
 *.tsbuildinfo

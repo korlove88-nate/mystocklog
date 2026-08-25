@@ -1,0 +1,16 @@
+import { backtestSchemas } from '../db/schema'
+
+type Section={id:string;parentId?:string|null;sectionType:string;title:string;summary:string;reportData:unknown;sortOrder:number}
+type Run={id:string;runDate:string;phase:string;title:string;algorithmVersion:string;periodStart:string|null;periodEnd:string|null;universe:string;config:unknown;summary:unknown;conclusion:string;createdAt:string;sections:Section[]}
+
+export async function ensureBacktestSchema(db:D1Database){for(const sql of backtestSchemas)await db.prepare(sql).run()}
+const json=(value:unknown)=>JSON.stringify(value)
+const parse=(value:string)=>{try{return JSON.parse(value)}catch{return null}}
+
+export async function listBacktests(db:D1Database){await ensureBacktestSchema(db);const rows=await db.prepare('SELECT * FROM backtest_runs ORDER BY run_date DESC, created_at DESC').all<Record<string,string>>();return Promise.all(rows.results.map(async row=>{const sections=await db.prepare('SELECT * FROM backtest_sections WHERE run_id=?1 ORDER BY sort_order ASC').bind(row.id).all<Record<string,string>>();return{id:row.id,runDate:row.run_date,phase:row.phase,title:row.title,algorithmVersion:row.algorithm_version,periodStart:row.period_start,periodEnd:row.period_end,universe:row.universe,config:parse(row.config_json),summary:parse(row.summary_json),conclusion:row.conclusion,createdAt:row.created_at,sections:sections.results.map(section=>({id:section.id,parentId:section.parent_id,sectionType:section.section_type,title:section.title,summary:section.summary,reportData:parse(section.report_data_json),sortOrder:Number(section.sort_order)}))}}))}
+
+export async function importBacktest(request:Request,db:D1Database,token?:string){if(request.headers.get('authorization')!==`Bearer ${token}`)return Response.json({error:'Unauthorized'},{status:401});let run:Run;try{run=await request.json() as Run}catch{return Response.json({error:'Invalid JSON'},{status:400})}if(!run?.id||!run.runDate||!run.title||!Array.isArray(run.sections))return Response.json({error:'Invalid backtest record'},{status:422});await ensureBacktestSchema(db);await db.batch([
+  db.prepare('INSERT INTO backtest_runs(id,run_date,phase,title,algorithm_version,period_start,period_end,universe,config_json,summary_json,conclusion,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) ON CONFLICT(id) DO UPDATE SET run_date=excluded.run_date,phase=excluded.phase,title=excluded.title,algorithm_version=excluded.algorithm_version,period_start=excluded.period_start,period_end=excluded.period_end,universe=excluded.universe,config_json=excluded.config_json,summary_json=excluded.summary_json,conclusion=excluded.conclusion,created_at=excluded.created_at').bind(run.id,run.runDate,run.phase,run.title,run.algorithmVersion,run.periodStart,run.periodEnd,run.universe,json(run.config),json(run.summary),run.conclusion,run.createdAt),
+  db.prepare('DELETE FROM backtest_sections WHERE run_id=?1').bind(run.id),
+  ...run.sections.map(section=>db.prepare('INSERT INTO backtest_sections(id,run_id,parent_id,section_type,title,summary,report_data_json,sort_order) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)').bind(section.id,run.id,section.parentId??null,section.sectionType,section.title,section.summary,json(section.reportData),section.sortOrder)),
+]);return Response.json({status:'success',id:run.id})}

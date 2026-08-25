@@ -4,6 +4,7 @@ import handler from "vinext/server/app-router-entry";
 import { handleMarketData, handleScheduledRefresh } from "./market-data";
 import { handleAlertApi } from "./price-alerts";
 import { appendBacktestSections, importBacktest, listBacktests } from './backtests';
+import { handlePositionApi } from './positions';
 
 interface Env {
   ASSETS: Fetcher;
@@ -56,6 +57,8 @@ const worker = {
     if (url.pathname === '/api/backtests') {
       return request.method === 'GET' ? Response.json({runs:await listBacktests(env.DB)},{headers:{'Cache-Control':'private, no-store'}}) : request.method === 'PATCH' ? appendBacktestSections(request,env.DB,env.MARKET_SYNC_TOKEN) : importBacktest(request,env.DB,env.MARKET_SYNC_TOKEN);
     }
+
+    if (url.pathname === '/api/positions') return handlePositionApi(request, env.DB);
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];

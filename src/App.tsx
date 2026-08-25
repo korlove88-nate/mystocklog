@@ -30,7 +30,7 @@ type ApiTextKey = keyof ApiConfig
 type Connection = 'idle'|'testing'|'ok'|'error'
 
 const emptyConfig:ApiConfig={sheetsKey:'',sheetId:'',supabaseUrl:'',supabaseAnonKey:'',openAiKey:''}
-const APP_VERSION='v2.9.2'
+const APP_VERSION='v2.9.3'
 function backtestInterpretation(run:BacktestRun){if(run.phase.startsWith('1.7')){const h=run.summary.horizons?.find((x:any)=>x.horizon==='60D');return `60거래일 기준 일반 표본은 ${fmt(h?.general?.median??null,'percent')}, 복합조건은 ${fmt(h?.combo?.median??null,'percent')}였습니다. 복합조건 표본은 ${h?.combo?.count?.toLocaleString()??'—'}건이며, 결과가 높아도 단기 하락 가능성까지 사라지는 것은 아닙니다.`}if(run.phase.startsWith('1.5')){const model=run.summary.models?.find((x:any)=>x.name==='현재 30/20/15');const mdd=run.summary.ablations?.find((x:any)=>x.name==='MDD 제외');return `현재 배점 모델의 고점수 60일 중앙값은 ${fmt(model?.high?.median??null,'percent')}였습니다. MDD를 제외하면 ${fmt(mdd?.high?.median??null,'percent')}로 낮아져, 낙폭과 MDD 정보가 결과 구분에 기여했을 가능성을 보여줍니다.`}const c=run.summary.conditions?.find((x:any)=>x.label==='복합 · 도달 + 70 이상');const g=run.summary.conditions?.find((x:any)=>x.label==='일반 평가 가능 거래일');return `60거래일 기준 일반 평가는 ${fmt(g?.results?.[60]?.median??null,'percent')}, 핵심가격 도달과 점수 70 이상을 함께 만족한 조건은 ${fmt(c?.results?.[60]?.median??null,'percent')}였습니다. 복합조건은 참고용 과거 비교이며 미래 수익을 보장하지 않습니다.`}
 const tags=['가격','실적','이슈','리스크','전략']
 const periods:Period[]=['1M','3M','6M','1Y','3Y','5Y']

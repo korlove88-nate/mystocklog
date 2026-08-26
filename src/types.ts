@@ -49,7 +49,7 @@ export interface StockSnapshot {
   low52: MetricValue; atl: MetricValue; mdd: Record<number, MetricValue>; yearOpen: MetricValue; ytdReturn: MetricValue;
   return1m: MetricValue; return3m: MetricValue; return6m: MetricValue; return1y: MetricValue; return3y: MetricValue; return5y: MetricValue;
   ma20: MetricValue; ma60: MetricValue; ma120: MetricValue; ma200: MetricValue;
-  historyComplete: boolean; priceHistory: HistoricalPrice[]; dataSource?: 'toss' | 'reference';
+  historyComplete: boolean; priceHistory: HistoricalPrice[]; dataSource?: 'toss' | 'reference'; priceUpdatedAt?:string|null; priceState?:'live'|'close'|'failed';
   storageSource?: StorageSource;
   stale?: boolean;
   priceStability?: PriceStability | null;

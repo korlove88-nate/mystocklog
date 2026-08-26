@@ -6,6 +6,7 @@ import type { FundamentalHistoryPoint, HistoricalPrice, MarketCatalog, MarketOve
 import { loadGoogleFinanceSheet, loadGoogleFinanceWorkbook, type GoogleFinanceRecord, type GoogleFinanceWorkbook } from './google-finance-sheets'
 import { loadTossDailyPrices, loadTossPrices, type TossCredentials } from './toss-securities'
 import { loadCompanyQuality, refreshSecFinancials } from './sec-edgar'
+import { isUsRegularMarketOpen } from '../src/services/marketHours'
 
 type SnapshotRow = { payload:string; market_date:string|null; updated_at:string; refresh_cycle:string }
 export type StoredPayload = { quote:StockQuote|null; fundamentals:StockFundamentals|null; historicalPrices:HistoricalPrice[]; historyComplete:boolean; updatedAt:string; refreshCycle:string; fundamentalsUpdatedAt?:string|null; sources?:StockDataSources; providerMetrics?:{high52:number|null;low52:number|null}; storageSource?:'d1'|'supabase'; stale?:boolean; fundamentalsHistory?:FundamentalHistoryPoint[]; financialQuarters?:import('../src/types').SecFinancialQuarter[]; companyQuality?:import('../src/types').CompanyQualityEvaluation|null }
@@ -15,6 +16,7 @@ type DashboardMeta = { catalog:MarketCatalog; marketOverview:MarketOverviewItem[
 export type MarketBindings = { TOSS_CLIENT_ID?:string; TOSS_CLIENT_SECRET?:string; GOOGLE_SHEETS_ID?:string; GOOGLE_SHEETS_API_KEY?:string; GOOGLE_SHEETS_MASTER_RANGE?:string; GOOGLE_SHEETS_MARKET_RANGE?:string; SUPABASE_URL?:string; SUPABASE_SERVICE_ROLE_KEY?:string; SEC_USER_AGENT?:string }
 type SyncBindings = MarketBindings & { MARKET_SYNC_TOKEN?:string }
 type TossSyncItem = { quote:StockQuote; historicalPrices:HistoricalPrice[] }
+type LiveQuoteStatus = { status:'live'|'closed'|'failed'|'unavailable'; updatedAt:string|null; error?:string }
 
 const validSymbol=(value:string)=>/^[A-Z][A-Z0-9.-]{0,9}$/.test(value)
 const refreshCycle=(now=new Date())=>{const kst=new Date(now.getTime()+9*60*60*1000);if(kst.getUTCHours()<6||(kst.getUTCHours()===6&&kst.getUTCMinutes()<40))kst.setUTCDate(kst.getUTCDate()-1);return kst.toISOString().slice(0,10)}
@@ -116,6 +118,22 @@ export async function handleMarketData(request:Request,db:D1Database,bindings:Sy
   }
   if(url.searchParams.get('status')==='1'){const meta=await loadDashboardMeta(db);return Response.json({tossConfigured:Boolean(tossCredentials(bindings)),googleSheetsConfigured:googleConfigured(bindings),supabaseConfigured:supabaseConfigured(bindings),durableStorage:true,lastRefresh:meta.lastRefresh??null,marketOverview:overviewStatus(meta.marketOverview)})}
   if(url.searchParams.get('dashboard')==='1'){
+    if(url.searchParams.get('liveQuote')==='1'){
+      const meta=await loadDashboardMeta(db),entries=await Promise.all(meta.catalog.stocks.filter(stock=>stock.active).map(async stock=>[stock.ticker,await loadStored(db,stock.ticker)] as const)),payloads=Object.fromEntries(entries.filter(([,entry])=>entry.payload).map(([ticker,entry])=>[ticker,storedView(entry.payload!)]))
+      let liveQuote:LiveQuoteStatus={status:'closed',updatedAt:null}
+      if(isUsRegularMarketOpen()){
+        const credentials=tossCredentials(bindings)
+        if(!credentials)liveQuote={status:'unavailable',updatedAt:null,error:'TOSS credentials unavailable'}
+        else try{
+          const now=new Date().toISOString(),quotes=await loadTossPrices(meta.catalog.stocks.filter(stock=>stock.active&&stock.ticker!=='SPCX').map(stock=>stock.ticker),credentials)
+          let updated=0
+          for(const [ticker,payload] of Object.entries(payloads)){const quote=quotes[ticker];if(!quote||quote.price===null)continue;const previousClose=payload.quote?.price??payload.historicalPrices.at(-1)?.close??null;payload.quote={...quote,previousClose,changePercent:previousClose?quote.price/previousClose-1:null};payload.updatedAt=now;updated+=1}
+          liveQuote=updated?{status:'live',updatedAt:now}:{status:'failed',updatedAt:null,error:'No TOSS quotes returned'}
+        }catch(error){liveQuote={status:'failed',updatedAt:null,error:error instanceof Error?error.message:'TOSS quote failed'}}
+      }
+      await withFundamentalsHistory(db,payloads);await withCompanyQuality(db,payloads)
+      return response({payloads,catalog:meta.catalog,marketOverview:meta.marketOverview,refresh:meta.lastRefresh??null,liveQuote},liveQuote.status==='live'?'TOSS-LIVE-QUOTE':liveQuote.status==='failed'?'TOSS-LIVE-FAILED':'D1-CLOSE')
+    }
     const force=request.headers.get('x-refresh-market-data')==='1';if(force){const refreshed=await refreshDashboard(db,bindings,'manual',true);await withFundamentalsHistory(db,refreshed.payloads);await withCompanyQuality(db,refreshed.payloads);return response(refreshed,refreshed.refresh.status==='success'?'DASHBOARD-REFRESH':'DASHBOARD-PARTIAL',refreshed.refresh.status==='failed'?502:200)}
     const meta=await loadDashboardMeta(db),entries=await Promise.all(meta.catalog.stocks.filter(stock=>stock.active).map(async stock=>[stock.ticker,await loadStored(db,stock.ticker)] as const)),payloads=Object.fromEntries(entries.filter(([,entry])=>entry.payload).map(([ticker,entry])=>[ticker,storedView(entry.payload!)]));await withFundamentalsHistory(db,payloads);await withCompanyQuality(db,payloads);return response({payloads,catalog:meta.catalog,marketOverview:meta.marketOverview,refresh:meta.lastRefresh??null},Object.keys(payloads).length?'D1-DASHBOARD-HIT':'D1-DASHBOARD-EMPTY')
   }

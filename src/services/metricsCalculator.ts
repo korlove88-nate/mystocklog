@@ -123,11 +123,11 @@ export function calculateMetrics(prices: HistoricalPrice[], currentPrice: Metric
   }
 }
 
-export function calculatePriceStability(prices: HistoricalPrice[], ma20: MetricValue, ma60: MetricValue): PriceStability | null {
+export function calculatePriceStability(prices: HistoricalPrice[], ma20: MetricValue, ma60: MetricValue, currentPrice:MetricValue=null): PriceStability | null {
   const points = normalizeHistoricalPrices(prices)
   if (points.length < 21 || !valid(ma20) || !valid(ma60)) return null
   const latest = points.at(-1)!
-  const latestPrice = analyticalPrice(latest)
+  const latestPrice = valid(currentPrice)?currentPrice:analyticalPrice(latest)
   const recentLow = Math.min(...points.slice(-5).map(point => point.low ?? analyticalPrice(point)))
   const priorLows = points.slice(-25, -5).map(point => point.low ?? analyticalPrice(point))
   const renewedLow = priorLows.length > 0 && recentLow <= Math.min(...priorLows)

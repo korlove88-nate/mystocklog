@@ -14,6 +14,11 @@ describe('getMarketHours',()=>{
     expect(getMarketHours(new Date('2026-07-15T21:00:00Z')).status).toBe('closed')
     expect(getMarketHours(new Date('2026-07-18T15:00:00Z')).status).toBe('holiday')
   })
+  it('does not open on US holidays and honors standard early closes',()=>{
+    expect(getMarketHours(new Date('2026-07-03T16:00:00Z')).status).toBe('holiday')
+    expect(getMarketHours(new Date('2026-11-27T17:30:00Z')).status).toBe('open')
+    expect(getMarketHours(new Date('2026-11-27T18:00:00Z')).status).toBe('closed')
+  })
   it('uses the latest completed regular session and skips weekends and holidays',()=>{
     expect(latestCompletedUsMarketDate(new Date('2026-08-21T01:00:00Z'))).toBe('2026-08-20')
     expect(latestCompletedUsMarketDate(new Date('2026-07-06T14:00:00Z'))).toBe('2026-07-02')

@@ -20,6 +20,13 @@ describe('Toss Securities provider',()=>{
     expect(await loadTossDailyPrices('AAPL',{clientId:'id',clientSecret:'secret'})).toEqual([{date:'2026-08-19',open:225,high:232,low:224,close:230,adjustedClose:230,volume:123456}])
   })
 
+  it('can request only the latest confirmed daily candle after initial history exists',async()=>{
+    const fetchMock=vi.fn().mockResolvedValueOnce(response({access_token:'token',expires_in:3600})).mockResolvedValueOnce(response({result:{candles:[],nextBefore:null}}))
+    vi.stubGlobal('fetch',fetchMock)
+    await loadTossDailyPrices('AAPL',{clientId:'id',clientSecret:'secret'},1,1)
+    expect(String(fetchMock.mock.calls[1][0])).toContain('count=1')
+  })
+
   it('keeps only a masked TOSS HTTP error diagnostic',async()=>{
     const failed={ok:false,status:403,json:async()=>({code:'IP_NOT_ALLOWED',message:'IP is not registered for this client_secret=tssk_live_example'})}
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(failed))

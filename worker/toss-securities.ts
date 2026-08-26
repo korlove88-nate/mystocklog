@@ -46,12 +46,12 @@ export async function loadTossPrices(symbols:string[],credentials:TossCredential
   }))
 }
 
-export async function loadTossDailyPrices(symbol:string,credentials:TossCredentials,maxPages=MAX_CANDLE_PAGES):Promise<HistoricalPrice[]>{
+export async function loadTossDailyPrices(symbol:string,credentials:TossCredentials,maxPages=MAX_CANDLE_PAGES,countPerPage=200):Promise<HistoricalPrice[]>{
   const token=await accessToken(credentials)
   const points:HistoricalPrice[]=[]
   let before:string|null=null
   for(let page=0;page<Math.max(1,Math.min(MAX_CANDLE_PAGES,maxPages));page+=1){
-    const query=new URLSearchParams({symbol,interval:'1d',count:'200',adjusted:'true'})
+    const query=new URLSearchParams({symbol,interval:'1d',count:String(Math.max(1,Math.min(200,countPerPage))),adjusted:'true'})
     if(before)query.set('before',before)
     const payload=await get<CandlePage>(`/api/v1/candles?${query}`,token)
     for(const candle of payload.result?.candles??[]){

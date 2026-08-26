@@ -8,8 +8,16 @@ export type MaDirection='상승 중'|'횡보'|'하락 중'|'데이터 부족'
 export type TrendState='강한 상승'|'상승 우세'|'방향 탐색'|'약세 우세'|'강한 하락'
 export type VolumeState='거래 집중'|'참여 증가'|'평소 수준'|'관심 감소'|'데이터 부족'
 export type ZoneReaction={tests:number;successes:number;rate:MetricValue;label:string}
-export type PriceZone={low:number;high:number;status:string;distance:MetricValue;relation:string;reasons:ZoneReason[];method:'ATR'|'현재가 비율';confidence:number;confidenceLabel:string;confidenceCompleteness:number;reaction:ZoneReaction;volumeProfilePrice:MetricValue;maCluster:boolean}
+export type PriceZone={low:number;high:number;midpoint:number;status:string;distance:MetricValue;relation:string;reasons:ZoneReason[];originalReasons:ZoneReason[];trimmedOutlier:ZoneReason|null;isTrimmed:boolean;method:'ATR'|'현재가 비율';confidence:number;confidenceLabel:string;confidenceCompleteness:number;reaction:ZoneReaction;volumeProfilePrice:MetricValue;maCluster:boolean}
 export type ZoneReason={name:string;price:number;date:string|null;source:string;duplicateGroup?:string}
+/** 운영 핵심가격 알고리즘 1차 완성본의 고정 기준. */
+export const CORE_PRICE_ALGORITHM_V1={
+  maDirection:'MA60/120/200은 현재가 이하일 때만 매수, 현재가 초과 시 차익관리 후보',
+  buyTrim:'매수 클러스터 폭 5% 이상·후보 3개 이상이면 중앙값에서 가장 먼 후보 1개 제거',
+  cluster:'ATR × 1.25, 최소 1.5%, 최대 8%, min~max',
+  scoreThreshold:70,
+  weights:'30/20/15',
+} as const
 export type StockAnalysis={
   asOf:string|null;price:MetricValue;opportunity:ReturnType<typeof opportunityScore>;opportunityLabel:string;opportunityMeaning:string;
   completeness:number;ma:Record<MaKey,{value:MetricValue;difference:MetricValue;direction:MaDirection}>;arrangement:'정배열'|'역배열'|'혼조 배열'|'데이터 부족';trend:TrendState;
@@ -64,14 +72,17 @@ const averageTrueRange=(prices:HistoricalPrice[])=>{const points=normalizeHistor
 export const clusterTolerance=(atr:number|null,price:number)=>Math.max(.015,Math.min(.08,atr?atr/price*T.clusterAtrMultiplier:T.clusterFallbackPercent))
 const confidenceLabel=(score:number)=>score>=80?'매우 높음':score>=65?'높음':score>=45?'보통':'낮음'
 const emptyReaction=(type:'buy'|'sell'):ZoneReaction=>({tests:0,successes:0,rate:null,label:`과거 ${type==='buy'?'지지':'저항'} 반응 데이터 부족`})
+// 핵심가격 알고리즘 v1: MA 방향성 · ATR 1.25(1.5~8%) · min~max · 매수 TRIM.
 const cluster=(reasons:ZoneReason[],price:number,method:PriceZone['method'],tolerance:number,type:'buy'|'sell'):PriceZone|null=>{
   const candidates=reasons.filter(reason=>reason.price>0).sort((a,b)=>a.price-b.price)
   let best:ZoneReason[]=[]
   for(let i=0;i<candidates.length;i++){const group=candidates.filter(item=>Math.abs(item.price-candidates[i].price)/price<=tolerance);if(group.length>best.length)best=group}
-  if(best.length<2){const eligible=candidates.filter(item=>type==='buy'?item.price<=price*1.15:item.price>=price*.85),nearest=[...(eligible.length?eligible:candidates)].sort((a,b)=>Math.abs(a.price-price)-Math.abs(b.price-price))[0];if(!nearest)return null;const band=Math.max(nearest.price*.005,price*tolerance*.25),low=nearest.price-band,high=nearest.price+band,distance=pctDistance(price,low,high),relation=price>high?`${type==='buy'?'관심':'차익관리'} 구간까지 ${(distance*100).toFixed(1)}%`:price<low?(type==='buy'?'관심 구간을 하향 이탈':`차익관리 구간까지 +${(distance*100).toFixed(1)}%`):(type==='buy'?'현재 매수 관심 구간':'현재 차익관리 구간');return{low,high,status:'신뢰도 낮음 · 단일 기준',distance,relation,reasons:[nearest],method,confidence:0,confidenceLabel:'낮음',confidenceCompleteness:0,reaction:emptyReaction(type),volumeProfilePrice:null,maCluster:false}}
-  const low=Math.min(...best.map(item=>item.price)),high=Math.max(...best.map(item=>item.price)),distance=pctDistance(price,low,high)
+  if(best.length<2){const eligible=candidates.filter(item=>type==='buy'?item.price<=price*1.15:item.price>=price*.85),nearest=[...(eligible.length?eligible:candidates)].sort((a,b)=>Math.abs(a.price-price)-Math.abs(b.price-price))[0];if(!nearest)return null;const band=Math.max(nearest.price*.005,price*tolerance*.25),low=nearest.price-band,high=nearest.price+band,midpoint=(low+high)/2,distance=pctDistance(price,low,high),relation=price>high?`${type==='buy'?'관심':'차익관리'} 구간까지 ${(distance*100).toFixed(1)}%`:price<low?(type==='buy'?'관심 구간을 하향 이탈':`차익관리 구간까지 +${(distance*100).toFixed(1)}%`):(type==='buy'?'현재 매수 관심 구간':'현재 차익관리 구간');return{low,high,midpoint,status:'신뢰도 낮음 · 단일 기준',distance,relation,reasons:[nearest],originalReasons:[nearest],trimmedOutlier:null,isTrimmed:false,method,confidence:0,confidenceLabel:'낮음',confidenceCompleteness:0,reaction:emptyReaction(type),volumeProfilePrice:null,maCluster:false}}
+  const originalReasons=best,originalMedian=median(best.map(item=>item.price))!,originalWidth=(Math.max(...best.map(item=>item.price))-Math.min(...best.map(item=>item.price)))/originalMedian,trimmedOutlier=type==='buy'&&best.length>=3&&originalWidth>=.05?[...best].sort((a,b)=>Math.abs(b.price-originalMedian)-Math.abs(a.price-originalMedian))[0]:null
+  if(trimmedOutlier)best=best.filter(item=>item!==trimmedOutlier)
+  const low=Math.min(...best.map(item=>item.price)),high=Math.max(...best.map(item=>item.price)),midpoint=(low+high)/2,distance=pctDistance(price,low,high)
   const relation=price>high?`${type==='buy'?'관심':'차익관리'} 구간까지 ${(distance*100).toFixed(1)}%`:price<low?(type==='buy'?'관심 구간을 하향 이탈':`차익관리 구간까지 +${(distance*100).toFixed(1)}%`):(type==='buy'?'현재 매수 관심 구간':'현재 차익관리 구간')
-  return{low,high,status:type==='buy'?(best.length>=4?'강한 관심 후보':best.length===3?'2차 관심':'1차 관심'):'저항 중첩',distance,relation,reasons:best,method,confidence:0,confidenceLabel:'낮음',confidenceCompleteness:0,reaction:emptyReaction(type),volumeProfilePrice:null,maCluster:false}
+  return{low,high,midpoint,status:type==='buy'?(best.length>=4?'강한 관심 후보':best.length===3?'2차 관심':'1차 관심'):'저항 중첩',distance,relation,reasons:best,originalReasons,trimmedOutlier,isTrimmed:Boolean(trimmedOutlier),method,confidence:0,confidenceLabel:'낮음',confidenceCompleteness:0,reaction:emptyReaction(type),volumeProfilePrice:null,maCluster:false}
 }
 
 export function volumeProfilePrice(prices:HistoricalPrice[]):MetricValue{
@@ -114,7 +125,8 @@ export function calculatePriceZones(stock:StockSnapshot,asOf?:string){
   const years=[...new Set(points.map(point=>Number(point.date.slice(0,4))))].slice(-5),yearMdds=(historical?years.map(year=>calculateAnnualMdd(points,year)):Object.values(stock.mdd)).filter(valid).map(Math.abs),mddMedian=median(yearMdds),mddPrice=valid(high52)&&mddMedian!==null?high52*(1-mddMedian):null
   const reason=(name:string,value:MetricValue,source='앱 계산'):ZoneReason[]=>valid(value)?[{name,price:value,date:latestDate,source}]:[]
   const mas={ma60:historical?lastSeries?.ma60??null:stock.ma60,ma120:historical?lastSeries?.ma120??null:stock.ma120,ma200:historical?lastSeries?.ma200??null:stock.ma200},duplicateTolerance=Math.max(T.duplicateEventPercent,Math.min(.01,atr?atr/price*T.duplicateEventAtrMultiplier:0))
-  const buyReasons=[...reason('최근 스윙 저점',swingLow),...reason('52주 저점',low52),...reason('MDD 기준가격',mddPrice),...reason('MA60',mas.ma60),...reason('MA120',mas.ma120),...reason('MA200',mas.ma200)]
+  // MA60/120/200은 현재가 이하일 때만 매수 후보로 사용한다. 현재가 위 MA는 차익관리 후보 전용이다.
+  const buyReasons=[...reason('최근 스윙 저점',swingLow),...reason('52주 저점',low52),...reason('MDD 기준가격',mddPrice),...reason('MA60',valid(mas.ma60)&&mas.ma60<=price?mas.ma60:null),...reason('MA120',valid(mas.ma120)&&mas.ma120<=price?mas.ma120:null),...reason('MA200',valid(mas.ma200)&&mas.ma200<=price?mas.ma200:null)]
   const sellReasons=[...reason('최근 스윙 고점',swingHigh),...reason('52주 고점',high52),...reason('ATH',ath),...reason('MA60',valid(mas.ma60)&&mas.ma60>price?mas.ma60:null),...reason('MA120',valid(mas.ma120)&&mas.ma120>price?mas.ma120:null),...reason('MA200',valid(mas.ma200)&&mas.ma200>price?mas.ma200:null)]
   if(valid(swingLow)&&valid(low52)&&Math.abs(swingLow-low52)/price<=duplicateTolerance)for(const item of buyReasons.filter(item=>item.name==='최근 스윙 저점'||item.name==='52주 저점'))item.duplicateGroup='동일 저점 사건'
   if(valid(swingHigh)&&valid(high52)&&Math.abs(swingHigh-high52)/price<=duplicateTolerance)for(const item of sellReasons.filter(item=>item.name==='최근 스윙 고점'||item.name==='52주 고점'))item.duplicateGroup='동일 고점 사건'

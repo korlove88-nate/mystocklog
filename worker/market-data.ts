@@ -4,7 +4,7 @@ import { calculateMddProximity, calculateMetrics, calculatePriceStability } from
 import { isStoredPriceStale } from '../src/services/marketHours'
 import type { FundamentalHistoryPoint, HistoricalPrice, MarketCatalog, MarketOverviewItem, StockDataSources, StockFundamentals, StockQuote } from '../src/types'
 import { loadGoogleFinanceSheet, loadGoogleFinanceWorkbook, type GoogleFinanceRecord, type GoogleFinanceWorkbook } from './google-finance-sheets'
-import { loadTossDailyPrices, loadTossPrices, type TossCredentials } from './toss-securities'
+import { loadTossDailyPrices, loadTossPrices, TossApiError, type TossCredentials } from './toss-securities'
 import { loadCompanyQuality, refreshSecFinancials } from './sec-edgar'
 import { isUsRegularMarketOpen } from '../src/services/marketHours'
 
@@ -129,7 +129,7 @@ export async function handleMarketData(request:Request,db:D1Database,bindings:Sy
           let updated=0
           for(const [ticker,payload] of Object.entries(payloads)){const quote=quotes[ticker];if(!quote||quote.price===null)continue;const previousClose=payload.quote?.price??payload.historicalPrices.at(-1)?.close??null;payload.quote={...quote,previousClose,changePercent:previousClose?quote.price/previousClose-1:null};payload.updatedAt=now;updated+=1}
           liveQuote=updated?{status:'live',updatedAt:now}:{status:'failed',updatedAt:null,error:'No TOSS quotes returned'}
-        }catch(error){liveQuote={status:'failed',updatedAt:null,error:error instanceof Error?error.message:'TOSS quote failed'}}
+        }catch(error){const diagnostic=error instanceof TossApiError?{httpStatus:error.status,code:error.code,message:error.apiMessage}:{httpStatus:null,code:null,message:null};console.error('TOSS_LIVE_QUOTE_FAILED',diagnostic);liveQuote={status:'failed',updatedAt:null,error:'TOSS quote failed'}}
       }
       await withFundamentalsHistory(db,payloads);await withCompanyQuality(db,payloads)
       return response({payloads,catalog:meta.catalog,marketOverview:meta.marketOverview,refresh:meta.lastRefresh??null,liveQuote},liveQuote.status==='live'?'TOSS-LIVE-QUOTE':liveQuote.status==='failed'?'TOSS-LIVE-FAILED':'D1-CLOSE')

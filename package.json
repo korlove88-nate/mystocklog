@@ -1,6 +1,6 @@
 {
   "name": "mystocklog",
-  "version": "2.10.4",
+  "version": "2.10.5",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -24,6 +24,7 @@
     ,"backtest:phase3": "node --env-file=.env backtest/phase3.mjs"
     ,"backtest:phase3-5": "node --env-file=.env backtest/phase3_5.mjs"
     ,"backtest:phase3-7": "node --env-file=.env backtest/phase3_7.mjs"
+    ,"backtest:phase3-8": "node --env-file=.env backtest/phase3_8.mjs"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^1.0.2",

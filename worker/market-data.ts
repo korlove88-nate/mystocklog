@@ -16,7 +16,9 @@ type DashboardMeta = { catalog:MarketCatalog; marketOverview:MarketOverviewItem[
 export type MarketBindings = { TOSS_CLIENT_ID?:string; TOSS_CLIENT_SECRET?:string; GOOGLE_SHEETS_ID?:string; GOOGLE_SHEETS_API_KEY?:string; GOOGLE_SHEETS_MASTER_RANGE?:string; GOOGLE_SHEETS_MARKET_RANGE?:string; SUPABASE_URL?:string; SUPABASE_SERVICE_ROLE_KEY?:string; SEC_USER_AGENT?:string }
 type SyncBindings = MarketBindings & { MARKET_SYNC_TOKEN?:string }
 type TossSyncItem = { quote:StockQuote; historicalPrices:HistoricalPrice[] }
-type LiveQuoteStatus = { status:'live'|'closed'|'failed'|'unavailable'; updatedAt:string|null; error?:string }
+type LiveQuoteStatus = { status:'live'|'closed'|'failed'|'unavailable'|'delayed'|'ip_changed'; updatedAt:string|null; error?:string }
+type LatestPriceRow = { ticker:string; price:number; change:number|null; change_percent:number|null; updated_at:string }
+type CollectorStatus = { collector_id:string; status:'NORMAL'|'IP_CHANGED'|'API_ERROR'; previous_ip:string|null; current_ip:string|null; detected_at:string|null; last_success_at:string|null; last_error_code:string|null; last_error_message:string|null; updated_at:string }
 
 const validSymbol=(value:string)=>/^[A-Z][A-Z0-9.-]{0,9}$/.test(value)
 const refreshCycle=(now=new Date())=>{const kst=new Date(now.getTime()+9*60*60*1000);if(kst.getUTCHours()<6||(kst.getUTCHours()===6&&kst.getUTCMinutes()<40))kst.setUTCDate(kst.getUTCDate()-1);return kst.toISOString().slice(0,10)}
@@ -60,6 +62,34 @@ async function loadFundamentalsHistory(db:D1Database,ticker:string):Promise<Fund
 async function withFundamentalsHistory(db:D1Database,payloads:Record<string,StoredPayload>){await Promise.all(Object.entries(payloads).map(async([ticker,payload])=>{payload.fundamentalsHistory=await loadFundamentalsHistory(db,ticker)}));return payloads}
 async function withCompanyQuality(db:D1Database,payloads:Record<string,StoredPayload>){await Promise.all(Object.entries(payloads).map(async([ticker,payload])=>{const quality=await loadCompanyQuality(db,ticker);payload.financialQuarters=quality.quarters;payload.companyQuality=quality.evaluation}));return payloads}
 async function saveSupabase(bindings:MarketBindings,table:string,rows:Record<string,unknown>[],conflict:string){if(!rows.length||!bindings.SUPABASE_URL||!bindings.SUPABASE_SERVICE_ROLE_KEY)return false;const url=`${bindings.SUPABASE_URL.replace(/\/$/,'')}/rest/v1/${table}?on_conflict=${encodeURIComponent(conflict)}`;const result=await fetch(url,{method:'POST',headers:{apikey:bindings.SUPABASE_SERVICE_ROLE_KEY,Authorization:`Bearer ${bindings.SUPABASE_SERVICE_ROLE_KEY}`,'Content-Type':'application/json',Prefer:'resolution=ignore-duplicates,return=minimal'},body:JSON.stringify(rows)});if(!result.ok)throw new Error(`Supabase ${table} ${result.status}`);return true}
+async function loadLiveCollectorState(bindings:MarketBindings):Promise<{prices:Record<string,LatestPriceRow>;collector:CollectorStatus|null}>{
+  if(!supabaseConfigured(bindings))return{prices:{},collector:null}
+  const base=bindings.SUPABASE_URL!.replace(/\/$/,'')
+  const headers={apikey:bindings.SUPABASE_SERVICE_ROLE_KEY!,Authorization:`Bearer ${bindings.SUPABASE_SERVICE_ROLE_KEY!}`}
+  try{
+    const [pricesResponse,statusResponse]=await Promise.all([
+      fetch(`${base}/rest/v1/latest_prices?select=ticker,price,change,change_percent,updated_at`,{headers}),
+      fetch(`${base}/rest/v1/collector_status?collector_id=eq.toss_live_collector&select=collector_id,status,previous_ip,current_ip,detected_at,last_success_at,last_error_code,last_error_message,updated_at`,{headers}),
+    ])
+    if(!pricesResponse.ok||!statusResponse.ok)throw new Error('Supabase live state unavailable')
+    const rows=await pricesResponse.json() as LatestPriceRow[],statuses=await statusResponse.json() as CollectorStatus[]
+    return{prices:Object.fromEntries(rows.filter(row=>validSymbol(row.ticker)&&finite(row.price)&&typeof row.updated_at==='string').map(row=>[row.ticker,row])),collector:statuses[0]??null}
+  }catch{return{prices:{},collector:null}}
+}
+const isLivePriceDelayed=(updatedAt:string|null,now=Date.now())=>Boolean(updatedAt&&now-new Date(updatedAt).getTime()>5*60*1000)
+function applyLivePrices(payloads:Record<string,StoredPayload>,prices:Record<string,LatestPriceRow>,collector:CollectorStatus|null){
+  if(collector?.status==='IP_CHANGED')return{status:'ip_changed' as const,updatedAt:collector.last_success_at??null,error:'Public IP changed'}
+  if(!isUsRegularMarketOpen())return{status:'closed' as const,updatedAt:null}
+  let updatedAt:string|null=null,updated=0
+  for(const [ticker,payload] of Object.entries(payloads)){
+    const row=prices[ticker];if(!row)continue
+    const previousClose=payload.historicalPrices.at(-1)?.close??payload.quote?.price??null
+    payload.quote={ticker,price:row.price,previousClose,changePercent:finite(row.change_percent)?row.change_percent:previousClose?row.price/previousClose-1:null,marketDate:payload.quote?.marketDate??payload.historicalPrices.at(-1)?.date??null}
+    payload.updatedAt=row.updated_at;updated+=1;if(!updatedAt||row.updated_at>updatedAt)updatedAt=row.updated_at
+  }
+  if(!updated)return{status:collector?.status==='API_ERROR'?'failed' as const:'unavailable' as const,updatedAt:null}
+  return{status:isLivePriceDelayed(updatedAt)?'delayed' as const:'live' as const,updatedAt}
+}
 
 const mergePrices=(stored:HistoricalPrice[],fresh:HistoricalPrice[])=>[...new Map([...stored,...fresh].map(point=>[point.date,point])).values()].sort((a,b)=>a.date.localeCompare(b.date)).slice(-1500)
 const mergeOverview=(stored:MarketOverviewItem[],fresh:MarketOverviewItem[])=>emptyMarketOverview.map(base=>{const previous=stored.find(item=>item.key===base.key),next=fresh.find(item=>item.key===base.key);return next?.value!==null&&next?.value!==undefined?next:previous?.value!==null&&previous?.value!==undefined?previous:{...base}})
@@ -118,24 +148,8 @@ export async function handleMarketData(request:Request,db:D1Database,bindings:Sy
   }
   if(url.searchParams.get('status')==='1'){const meta=await loadDashboardMeta(db);return Response.json({tossConfigured:Boolean(tossCredentials(bindings)),googleSheetsConfigured:googleConfigured(bindings),supabaseConfigured:supabaseConfigured(bindings),durableStorage:true,lastRefresh:meta.lastRefresh??null,marketOverview:overviewStatus(meta.marketOverview)})}
   if(url.searchParams.get('dashboard')==='1'){
-    if(url.searchParams.get('liveQuote')==='1'){
-      const meta=await loadDashboardMeta(db),entries=await Promise.all(meta.catalog.stocks.filter(stock=>stock.active).map(async stock=>[stock.ticker,await loadStored(db,stock.ticker)] as const)),payloads=Object.fromEntries(entries.filter(([,entry])=>entry.payload).map(([ticker,entry])=>[ticker,storedView(entry.payload!)]))
-      let liveQuote:LiveQuoteStatus={status:'closed',updatedAt:null}
-      if(isUsRegularMarketOpen()){
-        const credentials=tossCredentials(bindings)
-        if(!credentials)liveQuote={status:'unavailable',updatedAt:null,error:'TOSS credentials unavailable'}
-        else try{
-          const now=new Date().toISOString(),quotes=await loadTossPrices(meta.catalog.stocks.filter(stock=>stock.active&&stock.ticker!=='SPCX').map(stock=>stock.ticker),credentials)
-          let updated=0
-          for(const [ticker,payload] of Object.entries(payloads)){const quote=quotes[ticker];if(!quote||quote.price===null)continue;const previousClose=payload.quote?.price??payload.historicalPrices.at(-1)?.close??null;payload.quote={...quote,previousClose,changePercent:previousClose?quote.price/previousClose-1:null};payload.updatedAt=now;updated+=1}
-          liveQuote=updated?{status:'live',updatedAt:now}:{status:'failed',updatedAt:null,error:'No TOSS quotes returned'}
-        }catch(error){const diagnostic=error instanceof TossApiError?{httpStatus:error.status,code:error.code,message:error.apiMessage}:{httpStatus:null,code:null,message:null};console.error('TOSS_LIVE_QUOTE_FAILED',diagnostic);liveQuote={status:'failed',updatedAt:null,error:'TOSS quote failed'}}
-      }
-      await withFundamentalsHistory(db,payloads);await withCompanyQuality(db,payloads)
-      return response({payloads,catalog:meta.catalog,marketOverview:meta.marketOverview,refresh:meta.lastRefresh??null,liveQuote},liveQuote.status==='live'?'TOSS-LIVE-QUOTE':liveQuote.status==='failed'?'TOSS-LIVE-FAILED':'D1-CLOSE')
-    }
     const force=request.headers.get('x-refresh-market-data')==='1';if(force){const refreshed=await refreshDashboard(db,bindings,'manual',true);await withFundamentalsHistory(db,refreshed.payloads);await withCompanyQuality(db,refreshed.payloads);return response(refreshed,refreshed.refresh.status==='success'?'DASHBOARD-REFRESH':'DASHBOARD-PARTIAL',refreshed.refresh.status==='failed'?502:200)}
-    const meta=await loadDashboardMeta(db),entries=await Promise.all(meta.catalog.stocks.filter(stock=>stock.active).map(async stock=>[stock.ticker,await loadStored(db,stock.ticker)] as const)),payloads=Object.fromEntries(entries.filter(([,entry])=>entry.payload).map(([ticker,entry])=>[ticker,storedView(entry.payload!)]));await withFundamentalsHistory(db,payloads);await withCompanyQuality(db,payloads);return response({payloads,catalog:meta.catalog,marketOverview:meta.marketOverview,refresh:meta.lastRefresh??null},Object.keys(payloads).length?'D1-DASHBOARD-HIT':'D1-DASHBOARD-EMPTY')
+    const meta=await loadDashboardMeta(db),entries=await Promise.all(meta.catalog.stocks.filter(stock=>stock.active).map(async stock=>[stock.ticker,await loadStored(db,stock.ticker)] as const)),payloads=Object.fromEntries(entries.filter(([,entry])=>entry.payload).map(([ticker,entry])=>[ticker,storedView(entry.payload!)])),liveState=await loadLiveCollectorState(bindings),liveQuote=applyLivePrices(payloads,liveState.prices,liveState.collector);await withFundamentalsHistory(db,payloads);await withCompanyQuality(db,payloads);return response({payloads,catalog:meta.catalog,marketOverview:meta.marketOverview,refresh:meta.lastRefresh??null,liveQuote,collectorStatus:liveState.collector},liveQuote.status==='live'?'SUPABASE-LIVE-QUOTE':liveQuote.status==='ip_changed'?'SUPABASE-IP-CHANGED':liveQuote.status==='delayed'?'SUPABASE-LIVE-DELAYED':Object.keys(payloads).length?'D1-DASHBOARD-HIT':'D1-DASHBOARD-EMPTY')
   }
   const symbolsParam=url.searchParams.get('symbols'),symbols=(symbolsParam?symbolsParam.split(','):[url.searchParams.get('symbol')??'']).map(value=>value.trim().toUpperCase()).filter(Boolean)
   if(!symbols.length||symbols.length>20||symbols.some(symbol=>!validSymbol(symbol)))return response({error:'Invalid symbols'},'INVALID',400)

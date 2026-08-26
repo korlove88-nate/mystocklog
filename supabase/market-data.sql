@@ -35,7 +35,31 @@ create table if not exists public.stock_snapshots (
   primary key (ticker, snapshot_date)
 );
 
+-- 장중 현재가는 이력으로 누적하지 않고 종목별 최신 행만 유지한다.
+create table if not exists public.latest_prices (
+  ticker text primary key,
+  price numeric not null,
+  change numeric,
+  change_percent numeric,
+  updated_at timestamptz not null default now()
+);
+
+-- Mac mini 수집기의 연결/IP 상태. 인증정보는 저장하지 않는다.
+create table if not exists public.collector_status (
+  collector_id text primary key,
+  status text not null check (status in ('NORMAL','IP_CHANGED','API_ERROR')),
+  previous_ip text,
+  current_ip text,
+  detected_at timestamptz,
+  last_success_at timestamptz,
+  last_error_code text,
+  last_error_message text,
+  updated_at timestamptz not null default now()
+);
+
 alter table public.daily_prices enable row level security;
 alter table public.stock_snapshots enable row level security;
+alter table public.latest_prices enable row level security;
+alter table public.collector_status enable row level security;
 
 -- 적축은 서버의 service-role key로만 수행하므로 public insert policy를 추가하지 않는다.

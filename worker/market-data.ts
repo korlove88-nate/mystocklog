@@ -141,6 +141,11 @@ export async function handleScheduledRefresh(db:D1Database,bindings:MarketBindin
 export async function handleMarketData(request:Request,db:D1Database,bindings:SyncBindings={}):Promise<Response>{
   const url=new URL(request.url);await ensureSchema(db)
   if(request.method==='POST'&&url.searchParams.get('sync')==='1')return importTossSync(request,db,bindings)
+  if(request.method==='POST'&&url.searchParams.get('scheduled')==='1'){
+    if(!(await authorizedSync(request,bindings.MARKET_SYNC_TOKEN)))return response({error:'Unauthorized'},'SCHEDULED-DENIED',401)
+    const refreshed=await refreshDashboard(db,bindings,'scheduled',false)
+    return response({refresh:refreshed.refresh,marketOverview:refreshed.marketOverview},refreshed.refresh.status==='success'?'SCHEDULED-REFRESH':'SCHEDULED-PARTIAL',refreshed.refresh.status==='failed'?502:200)
+  }
   if(url.searchParams.get('sec')==='1'&&request.headers.get('x-refresh-market-data')==='1'){
     const symbols=(url.searchParams.get('symbols')??'').split(',').map(value=>value.trim().toUpperCase()).filter(Boolean)
     if(!symbols.length||symbols.length>3||symbols.some(symbol=>!validSymbol(symbol)))return response({error:'SEC batch must contain 1-3 valid symbols'},'SEC-INVALID',400)

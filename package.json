@@ -1,6 +1,6 @@
 {
   "name": "mystocklog",
-  "version": "2.16.0",
+  "version": "2.17.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -15,6 +15,7 @@
     "test": "vitest run --config vitest.config.ts",
     "sync:toss": "node --env-file=.env scripts/sync-toss-to-production.mjs",
     "refresh:daily": "node --env-file=.env scripts/refresh-and-sync.mjs",
+    "refresh:market-overview": "node --env-file=.env scripts/refresh-market-overview-production.mjs",
     "collect:live-prices": "node --env-file=.env scripts/live-price-collector.mjs"
     ,"backtest:phase1": "node --env-file=.env backtest/phase1.mjs"
     ,"backtest:phase1-5": "node --env-file=.env backtest/phase1_5.mjs"

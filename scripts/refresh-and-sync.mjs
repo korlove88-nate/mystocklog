@@ -21,4 +21,6 @@ try{
   await log(`로컬 TOSS 갱신 완료 · ${body.refresh?.marketDate??'시장일 미확인'}`)
   await run('/usr/local/bin/node',['--env-file=.env','scripts/sync-toss-to-production.mjs'])
   await log('운영 D1 동기화 완료')
+  await run('/usr/local/bin/node',['--env-file=.env','scripts/refresh-market-overview-production.mjs'])
+  await log('운영 시장지표 갱신 완료')
 }catch(error){await log(`실패 · ${error instanceof Error?error.message:String(error)}`);process.exitCode=1}finally{stop()}

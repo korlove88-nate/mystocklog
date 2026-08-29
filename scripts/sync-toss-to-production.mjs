@@ -14,6 +14,10 @@ for(const row of latest){
   payloads[row.ticker]={quote:{ticker:row.ticker,price:point.close,previousClose:null,changePercent:null,marketDate:point.date},historicalPrices:[point]}
 }
 db.close()
-const response=await fetch(process.env.MARKET_SYNC_URL,{method:'POST',headers:{Authorization:`Bearer ${process.env.MARKET_SYNC_TOKEN}`,'Content-Type':'application/json',...(process.env.SITES_BYPASS_TOKEN?{'OAI-Sites-Authorization':`Bearer ${process.env.SITES_BYPASS_TOKEN}`}:{})},body:JSON.stringify({payloads})})
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+const request=async()=>fetch(process.env.MARKET_SYNC_URL,{method:'POST',headers:{Authorization:`Bearer ${process.env.MARKET_SYNC_TOKEN}`,'Content-Type':'application/json',...(process.env.SITES_BYPASS_TOKEN?{'OAI-Sites-Authorization':`Bearer ${process.env.SITES_BYPASS_TOKEN}`}:{})},body:JSON.stringify({payloads}),signal:AbortSignal.timeout(120_000)})
+let response,lastError
+for(let attempt=1;attempt<=3;attempt++)try{response=await request();if(response.ok||response.status<500)break;lastError=new Error(`HTTP ${response.status}`)}catch(error){lastError=error}finally{if(!response?.ok&&attempt<3)await delay(attempt*5_000)}
+if(!response)throw lastError??new Error('운영 동기화 연결 실패')
 const text=await response.text();if(!response.ok)throw new Error(`운영 동기화 실패 (${response.status}): ${text.slice(0,300)}`)
 const result=JSON.parse(text);console.log(`TOSS 동기화 완료: ${result.imported}개 종목 · 시장일 ${result.marketDate}`)

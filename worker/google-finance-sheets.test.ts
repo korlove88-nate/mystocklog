@@ -68,6 +68,7 @@ describe('GoogleFinance Bridge V2.1',()=>{
     expect(items.find(item=>item.key==='us10y')?.value).toBe(4.48)
     expect(items.find(item=>item.key==='us10y')?.change).toBeCloseTo(6)
     expect(items.find(item=>item.key==='usdkrw')).toMatchObject({value:1382.55,change:-0.002})
+    expect(marketOverviewFromValues([['Key','Display Value','Change Percent'],['USDKRW','₩1,377.57','0.00%']]).find(item=>item.key==='usdkrw')).toMatchObject({value:1377.57,change:0})
     expect(items).toHaveLength(6)
   })
 })

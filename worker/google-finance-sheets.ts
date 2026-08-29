@@ -6,7 +6,7 @@ export type GoogleFinanceRecord = { quote:StockQuote|null; fundamentals:StockFun
 export type GoogleFinanceWorkbook = { records:Record<string,GoogleFinanceRecord>; catalog:MarketCatalog; marketOverview:MarketOverviewItem[] }
 
 const headerKey=(value:unknown)=>String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')
-const numberOrNull=(value:unknown)=>{if(typeof value==='number'&&Number.isFinite(value))return value;if(typeof value!=='string'||!value.trim())return null;const raw=value.trim(),negative=/^\(.*\)$/.test(raw),suffix=raw.match(/([TBM])(?:\s*)$/i)?.[1]?.toUpperCase();const parsed=Number(raw.replace(/[()$,%xTBM]/gi,'').replaceAll(',','').trim());if(!Number.isFinite(parsed))return null;return(negative?-parsed:parsed)*(suffix==='T'?1e12:suffix==='B'?1e9:suffix==='M'?1e6:1)}
+const numberOrNull=(value:unknown)=>{if(typeof value==='number'&&Number.isFinite(value))return value;if(typeof value!=='string'||!value.trim())return null;const raw=value.trim(),negative=/^\(.*\)$/.test(raw),suffix=raw.match(/([TBM])(?:\s*)$/i)?.[1]?.toUpperCase();const parsed=Number(raw.replace(/[()$₩,%xTBM]/giu,'').replaceAll(',','').trim());if(!Number.isFinite(parsed))return null;return(negative?-parsed:parsed)*(suffix==='T'?1e12:suffix==='B'?1e9:suffix==='M'?1e6:1)}
 const percentOrNull=(value:unknown)=>{const parsed=numberOrNull(value);return parsed===null?null:typeof value==='string'&&value.includes('%')?parsed/100:Math.abs(parsed)>1?parsed/100:parsed}
 const active=(value:unknown)=>!['N','NO','FALSE','0','OFF','INACTIVE'].includes(String(value??'Y').trim().toUpperCase())
 const order=(value:unknown,fallback:number)=>numberOrNull(value)??fallback

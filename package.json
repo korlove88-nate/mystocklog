@@ -39,6 +39,7 @@
     ,"backtest:phase4-5": "node --env-file=.env backtest/phase4_5.mjs"
     ,"backtest:phase4-6": "node --env-file=.env backtest/phase4_6.mjs"
     ,"backtest:phase4-7": "node --env-file=.env backtest/phase4_7.mjs"
+    ,"backtest:phase4-8": "node --env-file=.env backtest/phase4_8.mjs"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^1.0.2",

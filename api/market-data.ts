@@ -8,8 +8,11 @@ type Collector = { status: 'NORMAL' | 'IP_CHANGED' | 'API_ERROR'; previous_ip: s
 // does not retain extensionless sibling imports in this project configuration.
 // Both values remain server-only Vercel environment variables.
 const supabaseRest = async <T>(path: string): Promise<T> => {
-  const base = (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL)?.replace(/\/$/, '')
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY
+  // Vercel can retain an older variable with an empty value after an import.
+  // Select the first non-empty value so a valid project-level fallback remains usable.
+  const firstConfigured = (...values: Array<string | undefined>) => values.find(value => value?.trim())?.trim()
+  const base = firstConfigured(process.env.SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_URL)?.replace(/\/$/, '')
+  const key = firstConfigured(process.env.SUPABASE_SERVICE_ROLE_KEY, process.env.SUPABASE_SECRET_KEY)
   if (!base || !key) throw new Error('Supabase server environment is not configured.')
   const response = await fetch(`${base}/rest/v1/${path}`, { headers: { apikey: key, Authorization: `Bearer ${key}` } })
   if (!response.ok) throw new Error(`Supabase REST ${response.status}`)

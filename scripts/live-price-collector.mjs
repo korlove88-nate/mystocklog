@@ -46,6 +46,7 @@ function localPriceContext(){
 
 async function supabaseGet(path){const response=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:supabaseHeaders});if(!response.ok)fail(`Supabase 조회 실패 (${response.status})`);return response.json()}
 async function upsert(table,rows,conflict){const response=await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=${encodeURIComponent(conflict)}`,{method:'POST',headers:{...supabaseHeaders,Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rows)});if(!response.ok)fail(`Supabase ${table} 저장 실패 (${response.status})`)}
+async function updateRequest(id,values){const response=await fetch(`${SUPABASE_URL}/rest/v1/refresh_requests?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',headers:{...supabaseHeaders,Prefer:'return=minimal'},body:JSON.stringify(values)});if(!response.ok)fail(`갱신 요청 상태 저장 실패 (${response.status})`)}
 async function loadStatus(){const rows=await supabaseGet(`collector_status?collector_id=eq.${COLLECTOR_ID}&select=*`);return Array.isArray(rows)?rows[0]??null:null}
 async function saveStatus(next){await upsert('collector_status',[{collector_id:COLLECTOR_ID,...next,updated_at:nowIso()}],'collector_id')}
 
@@ -88,11 +89,27 @@ async function poll(){
     await upsert('latest_prices',rows,'ticker')
     await saveStatus({status:'NORMAL',previous_ip:null,current_ip:lastKnownIp,detected_at:null,last_success_at:updatedAt,last_error_code:null,last_error_message:null})
     console.log(`현재가 동기화 완료: ${rows.length}개 · ${updatedAt}`)
+    return {ok:true,message:`${rows.length}개 현재가 동기화 완료`}
   }catch(error){await recordTossError(error).catch(()=>null);const summary=error instanceof TossHttpError?`TOSS ${error.status} ${error.code??''} ${error.apiMessage??''}`:error instanceof Error?error.message:'unknown error';console.error(`현재가 동기화 실패: ${summary}`)}
+  return {ok:false,message:'TOSS 현재가 동기화 실패'}
+}
+async function processRefreshRequests(){
+  const rows=await supabaseGet('refresh_requests?status=eq.PENDING&request_type=eq.CURRENT_PRICE&order=requested_at.asc&limit=5')
+  let ranPoll=false
+  for(const request of rows){
+    await updateRequest(request.id,{status:'PROCESSING',started_at:nowIso(),message:'Mac mini 처리 중'})
+    if(!marketIsOpen()){
+      await updateRequest(request.id,{status:'COMPLETED',completed_at:nowIso(),message:'미국 정규장 외 시간: 직전 정규장 종가 유지'})
+      continue
+    }
+    const result=await poll();ranPoll=true
+    await updateRequest(request.id,result.ok?{status:'COMPLETED',completed_at:nowIso(),message:result.message}:{status:'FAILED',completed_at:nowIso(),message:result.message,error_code:'TOSS_CURRENT_PRICE_FAILED'})
+  }
+  return ranPoll
 }
 async function main(){
   await inspectStartupIp().catch(error=>console.error(`수집기 시작 IP 점검 실패: ${error instanceof Error?error.message:'unknown error'}`))
   console.log('TOSS 장중 현재가 수집기 시작 · 미국 정규장에만 1분 간격으로 동기화합니다.')
-  for(;;){if(marketIsOpen())await poll();const wait=60_000-(Date.now()%60_000)+150;await delay(wait)}
+  for(;;){const handled=await processRefreshRequests().catch(error=>{console.error(`수동 갱신 요청 확인 실패: ${error instanceof Error?error.message:'unknown error'}`);return false});if(marketIsOpen()&&!handled)await poll();const wait=60_000-(Date.now()%60_000)+150;await delay(wait)}
 }
 void main()

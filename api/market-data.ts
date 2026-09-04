@@ -1,12 +1,23 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { noStoreHeaders, supabaseRest } from './_lib/supabase'
 
 type StoredRow = { symbol: string; payload: Record<string, unknown>; market_date: string | null; updated_at: string; refresh_cycle: string }
 type LatestPrice = { ticker: string; price: number; change: number | null; change_percent: number | null; updated_at: string }
 type Collector = { status: 'NORMAL' | 'IP_CHANGED' | 'API_ERROR'; previous_ip: string | null; current_ip: string | null; detected_at: string | null; last_success_at: string | null; last_error_code: string | null; last_error_message: string | null; updated_at: string }
 
+// Kept in this function file because Vercel's standalone Node Function bundler
+// does not retain extensionless sibling imports in this project configuration.
+// Both values remain server-only Vercel environment variables.
+const supabaseRest = async <T>(path: string): Promise<T> => {
+  const base = (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL)?.replace(/\/$/, '')
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY
+  if (!base || !key) throw new Error('Supabase server environment is not configured.')
+  const response = await fetch(`${base}/rest/v1/${path}`, { headers: { apikey: key, Authorization: `Bearer ${key}` } })
+  if (!response.ok) throw new Error(`Supabase REST ${response.status}`)
+  return response.json() as Promise<T>
+}
+
 const json = (res: ServerResponse, body: unknown, status = 200) => {
-  res.writeHead(status, noStoreHeaders)
+  res.writeHead(status, { 'Cache-Control': 'private, no-store', 'Content-Type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
 }
 const validTicker = (value: string) => /^[A-Z][A-Z0-9.-]{0,9}$/.test(value)

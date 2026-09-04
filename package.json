@@ -9,14 +9,17 @@
   "scripts": {
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
+    "build:vercel": "vite build --config vite.vercel.config.ts",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit --pretty false",
     "test": "vitest run --config vitest.config.ts",
     "sync:toss": "node --env-file=.env scripts/sync-toss-to-production.mjs",
     "refresh:daily": "node --env-file=.env scripts/refresh-and-sync.mjs",
+    "refresh:daily:supabase": "node --env-file=.env scripts/refresh-and-sync-supabase.mjs",
     "refresh:market-overview": "node --env-file=.env scripts/refresh-market-overview-production.mjs",
-    "collect:live-prices": "node --env-file=.env scripts/live-price-collector.mjs"
+    "collect:live-prices": "node --env-file=.env scripts/live-price-collector.mjs",
+    "sync:supabase": "node --env-file=.env scripts/sync-d1-to-supabase.mjs"
     ,"backtest:phase1": "node --env-file=.env backtest/phase1.mjs"
     ,"backtest:phase1-5": "node --env-file=.env backtest/phase1_5.mjs"
     ,"backtest:phase1-7": "node --env-file=.env backtest/phase1_7.mjs"

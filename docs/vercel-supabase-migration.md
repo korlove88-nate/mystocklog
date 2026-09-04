@@ -15,6 +15,7 @@
 
 ```bash
 node --env-file=.env scripts/sync-d1-to-supabase.mjs
+node --env-file=.env scripts/sync-sites-backtests-to-supabase.mjs
 ```
 
 이 과정은 D1을 삭제하거나 덮어쓰지 않는 단방향 복사다.

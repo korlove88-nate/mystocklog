@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { hasSession } from './_auth.js'
 
 const configured = (...values: Array<string | undefined>) => values.find(value => value?.trim())?.trim()
 const json = (res: ServerResponse, body: unknown, status = 200) => {
@@ -7,6 +8,7 @@ const json = (res: ServerResponse, body: unknown, status = 200) => {
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  if (!hasSession(req)) return json(res, { error: 'Authentication required.' }, 401)
   if (req.method !== 'POST') return json(res, { error: 'Method not allowed' }, 405)
   const base = configured(process.env.SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_URL)?.replace(/\/$/, '')
   const key = configured(process.env.SUPABASE_SERVICE_ROLE_KEY, process.env.SUPABASE_SECRET_KEY)

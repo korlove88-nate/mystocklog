@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { hasSession } from './_auth.js'
 
 type StoredRow = { symbol: string; payload: Record<string, unknown>; market_date: string | null; updated_at: string; refresh_cycle: string }
 type LatestPrice = { ticker: string; price: number; change: number | null; change_percent: number | null; updated_at: string }
@@ -31,6 +32,7 @@ const nyMarketOpen = () => {
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  if (!hasSession(req)) return json(res, { error: 'Authentication required.' }, 401)
   if (req.method !== 'GET') return json(res, { error: 'Method not allowed' }, 405)
   try {
     const url = new URL(req.url ?? '/', `https://${req.headers.host ?? 'localhost'}`)

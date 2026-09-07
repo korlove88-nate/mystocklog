@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { hasSession } from './_auth.js'
 
 // Transitional compatibility route. Existing personal holdings remain in the
 // legacy Sites D1 database until the Supabase-authenticated holdings migration
@@ -12,6 +13,11 @@ const legacyOrigin = () => {
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  if (!hasSession(req)) {
+    res.writeHead(401, { 'Cache-Control': 'private, no-store', 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({ error: 'Authentication required.' }))
+    return
+  }
   try {
     const incoming = new URL(req.url ?? '/api/positions', `https://${req.headers.host ?? 'localhost'}`)
     const target = new URL('/api/positions', legacyOrigin())

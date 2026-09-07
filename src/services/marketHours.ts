@@ -39,7 +39,8 @@ const earlyClose=(year:number,month:number,day:number)=>{
 
 export const latestCompletedUsMarketDate=(now=new Date())=>{
   const ny=partsFor(now,'America/New_York'),candidate=new Date(Date.UTC(Number(ny.year),Number(ny.month)-1,Number(ny.day)))
-  if(Number(ny.hour)<16)candidate.setUTCDate(candidate.getUTCDate()-1)
+  const closeHour=earlyClose(Number(ny.year),Number(ny.month),Number(ny.day))?13:16
+  if(Number(ny.hour)<closeHour)candidate.setUTCDate(candidate.getUTCDate()-1)
   while(!isTradingDay(candidate))candidate.setUTCDate(candidate.getUTCDate()-1)
   return isoDate(candidate)
 }
@@ -54,7 +55,7 @@ export const getMarketHours = (now=new Date()):MarketHours => {
   const marketDay=new Date(Date.UTC(year,month-1,day))
   const status:MarketSessionStatus=!isTradingDay(marketDay)?'holiday':now<open?'pre':now<close?'open':'closed'
   const statusLabel={pre:'장 시작 전',open:'장중',closed:'장 마감',holiday:'휴장'}[status]
-  return {et:'09:30–16:00',kst:`${kstFormatter.format(open)}–${kstFormatter.format(close)}`,status,statusLabel}
+  return {et:earlyClose(year,month,day)?'09:30–13:00':'09:30–16:00',kst:`${kstFormatter.format(open)}–${kstFormatter.format(close)}`,status,statusLabel}
 }
 
 export const isUsRegularMarketOpen=(now=new Date())=>getMarketHours(now).status==='open'

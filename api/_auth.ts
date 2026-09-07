@@ -19,15 +19,22 @@ export const validAccessCode = (value: unknown) => {
 export const hasSession = (req: IncomingMessage) => {
   const signingSecret = secret()
   const token = cookieValue(req.headers.cookie, '__Host-mystocklog_session')
-  if (!signingSecret || !token) return false
-  const [payload, signature] = token.split('.')
-  if (!payload || !signature || sign(payload, signingSecret) !== signature) return false
-  try { return Number(JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')).expiresAt) > Date.now() } catch { return false }
+  if (!isAccessConfigured() || !signingSecret || !token) return false
+  const [payload, signature, extra] = token.split('.')
+  if (!payload || !signature || extra !== undefined) return false
+  const expected = Buffer.from(sign(payload, signingSecret))
+  const supplied = Buffer.from(signature)
+  if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return false
+  try {
+    const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
+    return Number.isFinite(session.expiresAt) && session.expiresAt > Date.now() &&
+      session.codeVersion === sign(expectedCode()!, signingSecret)
+  } catch { return false }
 }
 export const issueSession = () => {
   const signingSecret = secret()
-  if (!signingSecret) return null
-  const payload = Buffer.from(JSON.stringify({ expiresAt: Date.now() + SESSION_SECONDS * 1000 })).toString('base64url')
+  if (!isAccessConfigured() || !signingSecret) return null
+  const payload = Buffer.from(JSON.stringify({ expiresAt: Date.now() + SESSION_SECONDS * 1000, codeVersion: sign(expectedCode()!, signingSecret) })).toString('base64url')
   return `${payload}.${sign(payload, signingSecret)}`
 }
 export const sessionCookie = (token: string) => `__Host-mystocklog_session=${token}; Path=/; Max-Age=${SESSION_SECONDS}; HttpOnly; Secure; SameSite=Strict`

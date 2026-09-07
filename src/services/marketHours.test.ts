@@ -29,4 +29,10 @@ describe('getMarketHours',()=>{
     expect(isStoredPriceStale('2026-08-20',now)).toBe(false)
     expect(isStoredPriceStale('2026-08-19',now)).toBe(true)
   })
+  it('recognizes the completed session at an early close and displays its actual hours',()=>{
+    const now=new Date('2026-11-27T18:00:00Z')
+    expect(latestCompletedUsMarketDate(now)).toBe('2026-11-27')
+    expect(getMarketHours(now).et).toBe('09:30–13:00')
+    expect(isStoredPriceStale('2026-11-25',now)).toBe(true)
+  })
 })

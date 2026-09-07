@@ -12,7 +12,7 @@ export interface StockDataProvider { getStocks(): Promise<StockDataResult> }
 
 type DashboardPayload={payloads?:Record<string,import('./marketDataProvider').MarketDataPayload>;catalog?:MarketCatalog;marketOverview?:MarketOverviewItem[];refresh?:RefreshState;liveQuote?:LiveQuoteState;collectorStatus?:CollectorStatus|null}
 class DashboardStockDataProvider implements StockDataProvider{
-  constructor(_forceRefresh=false){}
+  constructor(..._options: boolean[]){void _options}
   async getStocks():Promise<StockDataResult>{
     const result=await fetch('/api/market-data?dashboard=1',{signal:AbortSignal.timeout(30_000)})
     if(!result.ok)throw new Error(`Dashboard data request failed: ${result.status}`)

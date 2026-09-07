@@ -7,7 +7,6 @@ const valid=value=>typeof value==='number'&&Number.isFinite(value)
 const avg=xs=>xs.length?xs.reduce((sum,value)=>sum+value,0)/xs.length:null
 const median=xs=>{const values=[...xs].filter(valid).sort((a,b)=>a-b);return!values.length?null:values.length%2?values[(values.length-1)/2]:(values[values.length/2-1]+values[values.length/2])/2}
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value))
-const pct=value=>valid(value)?Number((value*100).toFixed(4)):null
 
 async function token(){
   if(!process.env.TOSS_CLIENT_ID||!process.env.TOSS_CLIENT_SECRET)throw new Error('TOSS_CLIENT_ID / TOSS_CLIENT_SECRET이 필요합니다.')
@@ -85,7 +84,7 @@ function simulate(histories,scores,config){
       else {position.low=Math.min(position.low,day.low);position.high=Math.max(position.high,day.high);if(index>position.entryIndex&&day.high>=position.target){cash=shares*position.target*.9995;trades.push({...position,closed:true,exitDate:day.date,days:index-position.entryIndex,net:position.target/position.entry*.999**1-1,mae:Math.min(0,position.low/position.entry-1),mfe:position.high/position.entry-1});shares=0;position=null}}
       curve.push({date:day.date,value:cash+shares*day.close})
     }
-    if(position){const last=curve.at(-1),lastPoint=points.find(point=>point.date===last.date);trades.push({...position,closed:false,exitDate:last.date,days:points.findIndex(point=>point.date===last.date)-position.entryIndex,net:last.value-1,mae:Math.min(0,position.low/position.entry-1),mfe:position.high/position.entry-1})}
+    if(position){const last=curve.at(-1);trades.push({...position,closed:false,exitDate:last.date,days:points.findIndex(point=>point.date===last.date)-position.entryIndex,net:last.value-1,mae:Math.min(0,position.low/position.entry-1),mfe:position.high/position.entry-1})}
     curves[ticker]=curve;allTrades.push(...trades);perTicker.push({ticker,...metric(trades,curve)})
   }
   const curve=mergeCurves(Object.values(curves));return{trades:allTrades,curve,perTicker,summary:metric(allTrades,curve),curves}

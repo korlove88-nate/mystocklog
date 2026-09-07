@@ -17,7 +17,7 @@ let cachedToken:Token|null=null
 const finite=(value:unknown)=>{const parsed=typeof value==='number'?value:Number(value);return Number.isFinite(parsed)?parsed:null}
 const marketDate=(timestamp:string|null|undefined)=>timestamp&&/^\d{4}-\d{2}-\d{2}/.test(timestamp)?timestamp.slice(0,10):null
 const safeText=(value:unknown)=>typeof value==='string'?value.slice(0,300).replace(/(?:tsck_live_|tssk_live_)[A-Za-z0-9_-]+/g,'[redacted]').replace(/(client_(?:id|secret)|access_token)=[^\s&]+/gi,'$1=[redacted]').replace(/Bearer\s+[A-Za-z0-9._-]+/gi,'Bearer [redacted]'):null
-const tossError=async(result:Response)=>{let payload:Record<string,unknown>|null=null;try{payload=await result.json() as Record<string,unknown>}catch{}const nested=payload?.error&&typeof payload.error==='object'?payload.error as Record<string,unknown>:null;return new TossApiError(result.status,safeText(payload?.code??payload?.errorCode??nested?.code),safeText(payload?.message??payload?.errorMessage??nested?.message))}
+const tossError=async(result:Response)=>{let payload:Record<string,unknown>|null=null;try{payload=await result.json() as Record<string,unknown>}catch{/* Non-JSON errors retain the HTTP status. */}const nested=payload?.error&&typeof payload.error==='object'?payload.error as Record<string,unknown>:null;return new TossApiError(result.status,safeText(payload?.code??payload?.errorCode??nested?.code),safeText(payload?.message??payload?.errorMessage??nested?.message))}
 
 async function accessToken(credentials:TossCredentials):Promise<string>{
   if(cachedToken&&cachedToken.expiresAt>Date.now()+60_000)return cachedToken.value

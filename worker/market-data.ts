@@ -4,7 +4,7 @@ import { calculateMddProximity, calculateMetrics, calculatePriceStability } from
 import { isStoredPriceStale } from '../src/services/marketHours'
 import type { FundamentalHistoryPoint, HistoricalPrice, MarketCatalog, MarketOverviewItem, StockDataSources, StockFundamentals, StockQuote } from '../src/types'
 import { loadGoogleFinanceSheet, loadGoogleFinanceWorkbook, type GoogleFinanceRecord, type GoogleFinanceWorkbook } from './google-finance-sheets'
-import { loadTossDailyPrices, loadTossPrices, TossApiError, type TossCredentials } from './toss-securities'
+import { loadTossDailyPrices, loadTossPrices, type TossCredentials } from './toss-securities'
 import { loadCompanyQuality, refreshSecFinancials } from './sec-edgar'
 import { isUsRegularMarketOpen } from '../src/services/marketHours'
 
@@ -16,7 +16,6 @@ type DashboardMeta = { catalog:MarketCatalog; marketOverview:MarketOverviewItem[
 export type MarketBindings = { TOSS_CLIENT_ID?:string; TOSS_CLIENT_SECRET?:string; GOOGLE_SHEETS_ID?:string; GOOGLE_SHEETS_API_KEY?:string; GOOGLE_SHEETS_MASTER_RANGE?:string; GOOGLE_SHEETS_MARKET_RANGE?:string; SUPABASE_URL?:string; SUPABASE_SERVICE_ROLE_KEY?:string; SEC_USER_AGENT?:string }
 type SyncBindings = MarketBindings & { MARKET_SYNC_TOKEN?:string }
 type TossSyncItem = { quote:StockQuote; historicalPrices:HistoricalPrice[] }
-type LiveQuoteStatus = { status:'live'|'closed'|'failed'|'unavailable'|'delayed'|'ip_changed'; updatedAt:string|null; error?:string }
 type LatestPriceRow = { ticker:string; price:number; change:number|null; change_percent:number|null; updated_at:string }
 type CollectorStatus = { collector_id:string; status:'NORMAL'|'IP_CHANGED'|'API_ERROR'; previous_ip:string|null; current_ip:string|null; detected_at:string|null; last_success_at:string|null; last_error_code:string|null; last_error_message:string|null; updated_at:string }
 

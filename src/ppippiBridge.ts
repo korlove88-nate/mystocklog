@@ -2,6 +2,9 @@ export const PPIPPI_ORIGINS = new Set(['http://127.0.0.1:8765', 'http://localhos
 export const PPIPPI_RECEIPTS_KEY = 'mystocklog-ppippi-action-receipts'
 type RouterReceipt={status:'PREVIEW';action_type:'MYSTOCKLOG_WATCHLIST_ADD'|'MYSTOCKLOG_WATCHLIST_REMOVE';idempotency_key:string;result:{parameters:Record<string,unknown>}}
 export type FavoriteAction = {source:'PPIPPI';version:1;type:'MYSTOCKLOG_FAVORITE_ADD'|'MYSTOCKLOG_FAVORITE_REMOVE'|'MYSTOCKLOG_FAVORITES_READ';idempotencyKey:string;ticker?:string;routerReceipt?:RouterReceipt}
+export type WatchlistReadRequest={source:'PPIPPI';version:1;type:'MYSTOCKLOG_WATCHLIST_READ';requestId:string}
+export type WatchlistSource={ticker:string;company:string;price:number|null;changePercent:number|null}
+export type WatchlistReadResult={source:'MYSTOCKLOG';version:1;type:'MYSTOCKLOG_WATCHLIST_RESULT';requestId:string;status:'SUCCESS'|'STALE'|'UNAVAILABLE';asOf:string|null;fetchedAt:string|null;items:WatchlistSource[]}
 type Receipt={source:'MYSTOCKLOG';version:1;idempotencyKey:string;status:'SUCCESS'|'DUPLICATE'|'BLOCKED';before:string[];after:string[];reason?:string}
 const validKey=(value:unknown)=>typeof value==='string'&&value.length>=8&&value.length<=160
 const priorKeys=(storage:Storage)=>{try{const value=JSON.parse(storage.getItem(PPIPPI_RECEIPTS_KEY)??'[]');return Array.isArray(value)?value.filter(validKey).slice(-100):[]}catch{return[]}}
@@ -19,3 +22,8 @@ export function applyFavoriteAction(action:FavoriteAction,current:string[],known
   return{source:'MYSTOCKLOG',version:1,idempotencyKey,status:'SUCCESS',before,after}
 }
 export function isTrustedPPIPPIEvent(event:MessageEvent){return window.top!==window&&event.source===window.parent&&PPIPPI_ORIGINS.has(event.origin)}
+export function buildWatchlistReadResult(requestId:string,favorites:string[],stocks:WatchlistSource[],asOf:string|null,fetchedAt:string|null,ready:boolean):WatchlistReadResult{
+  const favoriteSet=new Set(favorites)
+  const items=ready?stocks.filter(stock=>favoriteSet.has(stock.ticker)).map(stock=>({ticker:stock.ticker,company:stock.company,price:stock.price,changePercent:stock.changePercent})):[]
+  return{source:'MYSTOCKLOG',version:1,type:'MYSTOCKLOG_WATCHLIST_RESULT',requestId,status:ready?(asOf?'SUCCESS':'STALE'):'UNAVAILABLE',asOf,fetchedAt,items}
+}

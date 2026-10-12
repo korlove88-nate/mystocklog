@@ -37,5 +37,9 @@ export const issueSession = () => {
   const payload = Buffer.from(JSON.stringify({ expiresAt: Date.now() + SESSION_SECONDS * 1000, codeVersion: sign(expectedCode()!, signingSecret) })).toString('base64url')
   return `${payload}.${sign(payload, signingSecret)}`
 }
-export const sessionCookie = (token: string) => `__Host-mystocklog_session=${token}; Path=/; Max-Age=${SESSION_SECONDS}; HttpOnly; Secure; SameSite=Strict`
-export const clearSessionCookie = () => '__Host-mystocklog_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict'
+// PPIPPI embeds the production app from a different top-level origin. A
+// partitioned cookie keeps that embedded session scoped to the PPIPPI site,
+// while preserving HttpOnly server validation, expiry and explicit logout.
+// No access code is ever stored in browser storage.
+export const sessionCookie = (token: string) => `__Host-mystocklog_session=${token}; Path=/; Max-Age=${SESSION_SECONDS}; HttpOnly; Secure; SameSite=None; Partitioned`
+export const clearSessionCookie = () => '__Host-mystocklog_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None; Partitioned'

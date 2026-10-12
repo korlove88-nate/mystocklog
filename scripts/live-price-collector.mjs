@@ -1,6 +1,3 @@
-import { DatabaseSync } from 'node:sqlite'
-import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
 
 const COLLECTOR_ID='toss_live_collector'
 const TOSS_BASE_URL='https://openapi.tossinvest.com'
@@ -8,7 +5,6 @@ const SUPABASE_URL=process.env.SUPABASE_URL?.replace(/\/$/,'')
 const SUPABASE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY
 const CLIENT_ID=process.env.TOSS_CLIENT_ID
 const CLIENT_SECRET=process.env.TOSS_CLIENT_SECRET
-const databaseRoot='.wrangler/state/v3/d1/miniflare-D1DatabaseObject'
 let accessToken=null
 let accessTokenExpiresAt=0
 let lastKnownIp=null
@@ -34,14 +30,9 @@ const isTradingDay=(year,month,day)=>{const date=new Date(Date.UTC(year,month-1,
 const isEarlyClose=(year,month,day)=>{const date=new Date(Date.UTC(year,month-1,day)),thanksgiving=nthWeekday(year,11,4,4),blackFriday=new Date(`${thanksgiving}T00:00:00Z`);blackFriday.setUTCDate(blackFriday.getUTCDate()+1);const value=isoDate(date);return value===isoDate(blackFriday)||(value===`${year}-12-24`&&isTradingDay(year,month,day))||(value===`${year}-07-03`&&isTradingDay(year,month,day)&&!marketHolidays(year).has(value))}
 const marketIsOpen=(now=new Date())=>{const parts=nyParts(now),year=Number(parts.year),month=Number(parts.month),day=Number(parts.day),minute=Number(parts.hour)*60+Number(parts.minute);if(!isTradingDay(year,month,day))return false;const closeMinute=(isEarlyClose(year,month,day)?13:16)*60;return minute>=9*60+30&&minute<closeMinute}
 
-function localPriceContext(){
-  const databaseFile=existsSync(databaseRoot)?readdirSync(databaseRoot).find(name=>name.endsWith('.sqlite')&&name!=='metadata.sqlite'):null
-  if(!databaseFile)fail('로컬 D1 데이터베이스를 찾을 수 없습니다. 일일 수집을 먼저 완료하세요.')
-  const db=new DatabaseSync(join(databaseRoot,databaseFile),{readOnly:true})
-  try{
-    const rows=db.prepare("SELECT ticker, close FROM daily_prices WHERE source = 'TOSS' AND (ticker, market_date) IN (SELECT ticker, MAX(market_date) FROM daily_prices WHERE source = 'TOSS' GROUP BY ticker)").all()
-    return new Map(rows.filter(row=>validTicker(row.ticker)&&row.ticker!=='SPCX'&&finite(row.close)).map(row=>[row.ticker,row.close]))
-  }finally{db.close()}
+async function localPriceContext(){
+  const rows=await supabaseGet('market_snapshots?select=symbol,payload&limit=1000')
+  return new Map(rows.filter(row=>validTicker(row.symbol)&&row.symbol!=='SPCX'&&finite(row.payload?.historicalPrices?.at(-1)?.close)).map(row=>[row.symbol,row.payload.historicalPrices.at(-1).close]))
 }
 
 async function supabaseGet(path){const response=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:supabaseHeaders});if(!response.ok)fail(`Supabase 조회 실패 (${response.status})`);return response.json()}
@@ -81,9 +72,9 @@ async function recordTossError(error){
   const status=await loadStatus();await saveStatus({status:'API_ERROR',previous_ip:status?.previous_ip??null,current_ip:status?.current_ip??lastKnownIp,detected_at:status?.detected_at??null,last_success_at:status?.last_success_at??null,last_error_code:error instanceof TossHttpError?error.code??`HTTP_${error.status}`:'NETWORK_ERROR',last_error_message:error instanceof TossHttpError?error.apiMessage??'TOSS request failed':'TOSS request failed'})
 }
 async function poll(){
-  const closes=localPriceContext(),tickers=[...closes.keys()]
-  if(!tickers.length)fail('관리 대상 TOSS 종목이 없습니다.')
   try{
+    const closes=await localPriceContext(),tickers=[...closes.keys()]
+    if(!tickers.length)fail('관리 대상 TOSS 종목이 없습니다.')
     const prices=await tossPrices(tickers),updatedAt=nowIso(),rows=Object.entries(prices).map(([ticker,price])=>{const close=closes.get(ticker)??null,change=close===null?null:price-close;return{ticker,price,change,change_percent:close?change/close:null,updated_at:updatedAt}})
     if(!rows.length)throw new Error('TOSS 현재가 응답이 비어 있습니다.')
     await upsert('latest_prices',rows,'ticker')

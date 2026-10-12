@@ -16,7 +16,7 @@
     "test": "vitest run --config vitest.config.ts",
     "sync:toss": "node --env-file=.env scripts/sync-toss-to-production.mjs",
     "refresh:daily": "node --env-file=.env scripts/refresh-and-sync.mjs",
-    "refresh:daily:supabase": "node --env-file=.env scripts/refresh-and-sync-supabase.mjs",
+    "refresh:daily:supabase": "node --env-file=.env scripts/daily-supabase.mjs",
     "refresh:market-overview": "node --env-file=.env scripts/refresh-market-overview-production.mjs",
     "collect:live-prices": "node --env-file=.env scripts/live-price-collector.mjs",
     "sync:supabase": "node --env-file=.env scripts/sync-d1-to-supabase.mjs",
@@ -45,6 +45,10 @@
     ,"backtest:phase4-6": "node --env-file=.env backtest/phase4_6.mjs"
     ,"backtest:phase4-7": "node --env-file=.env backtest/phase4_7.mjs"
     ,"backtest:phase4-8": "node --env-file=.env backtest/phase4_8.mjs"
+    ,"backtest:phase5-0": "node --env-file=.env backtest/phase5_0.mjs"
+    ,"backtest:phase5-1": "node --env-file=.env backtest/phase5_1.mjs"
+    ,"backtest:phase5-2": "node --env-file=.env backtest/phase5_2.mjs"
+    ,"backtest:phase5-3": "node --env-file=.env backtest/phase5_3.mjs"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^1.0.2",
